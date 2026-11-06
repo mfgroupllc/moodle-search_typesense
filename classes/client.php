@@ -122,7 +122,8 @@ class client {
             throw new \moodle_exception('typesense:unsupportedmethod', 'search_typesense', '', $method);
         }
 
-        $httpcode = (int)$this->curl->get_info()['http_code'];
+        $info = $this->curl->get_info();
+        $httpcode = isset($info['http_code']) ? (int)$info['http_code'] : 0;
         if ($httpcode >= 400) {
             $this->throw_error($httpcode, $response);
         }

@@ -133,9 +133,14 @@ Resources:
 
             # Self-signed certificate so Moodle talks to Typesense over TLS.
             # (Internal VPC traffic; we still encrypt the API key + query content.)
+            # The instance's private IP is added as a Subject Alternative Name so
+            # Moodle's default curl (CURLOPT_SSL_VERIFYHOST=2) accepts the cert
+            # when it connects via the IP rather than the hostname.
+            PRIVATE_IP=$(hostname -I | awk '{print $1}')
             openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
               -keyout /data/typesense.key -out /data/typesense.crt \
-              -subj "/CN=typesense.moodle-stage"
+              -subj "/CN=typesense.moodle-stage" \
+              -addext "subjectAltName=IP:${PRIVATE_IP},DNS:typesense.moodle-stage"
 
             # systemd unit runs the native binary with TLS enabled.
             cat > /etc/systemd/system/typesense.service <<'UNIT'
