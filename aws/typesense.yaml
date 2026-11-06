@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Deploy a single Typesense search server for the Moodle search_typesense plugin.
+  Targets an existing VPC/subnet (e.g. the Escoffier moodle-stage environment) and
+  exposes port 8108 only to the Moodle security group. No SSH key required
+  (access via SSM Session Manager). Typesense runs as a native binary under systemd
+  (no Docker), so there is no container runtime or image-pull dependency.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC to deploy Typesense into (e.g. the moodle-stage VPC).
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet for the Typesense instance (must have internet egress to download the binary).
+
+  MoodleSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group of the Moodle web servers; only this group may reach Typesense on 8108.
+
+  InstanceType:
+    Type: String
+    Default: t3.small
+    Description: EC2 instance type. Typesense is light; t3.small is fine for stage.
+    AllowedValues:
+      - t3.small
+      - t3.medium
+      - t3.large
+      - m6i.large
+
+  RootVolumeSize:
+    Type: Number
+    Default: 30
+    Description: Size (GiB) of the instance root volume, which holds the Typesense /data directory.
+
+  TypesenseVersion:
+    Type: String
+    Default: latest
+    Description: >
+      Typesense version to install, e.g. "27.1". "latest" resolves to the newest
+      GitHub release at deployment time. Pin to a specific version for production reproducibility.
+
+  TypesenseApiKey:
+    Type: String
+    NoEcho: true
+    Description: API key clients (Moodle) must present. Use a strong value.
+    MinLength: 8
+
+  EnableCors:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Enable CORS on Typesense (handy if the Moodle box calls it cross-origin).
+
+Resources:
+  TypesenseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Typesense search server
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - Description: Typesense API from Moodle only
+          IpProtocol: tcp
+          FromPort: 8108
+          ToPort: 8108
+          SourceSecurityGroupId: !Ref MoodleSecurityGroupId
+
+  TypesenseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  TypesenseInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref TypesenseRole
+
+  TypesenseInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:
+        Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+        Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref TypesenseSecurityGroup
+      IamInstanceProfile: !Ref TypesenseInstanceProfile
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref RootVolumeSize
+            VolumeType: gp3
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            set -euo pipefail
+
+            # Resolve the Typesense version (default "latest" -> newest GitHub release).
+            VERSION="${TypesenseVersion}"
+            if [ "$VERSION" = "latest" ]; then
+              VERSION=$(curl -fsSL https://api.github.com/repos/typesense/typesense/releases/latest \
+                | grep -oP '"tag_name":\s*"\K[^"]+')
+            fi
+
+            # Download and install the single static binary.
+            URL="https://dl.typesense.org/releases/$VERSION/typesense-server-$VERSION-linux-amd64.tar.gz"
+            curl -fsSL "$URL" -o /tmp/typesense.tar.gz
+            tar -xzf /tmp/typesense.tar.gz -C /usr/local/bin
+            chmod +x /usr/local/bin/typesense-server
+            rm -f /tmp/typesense.tar.gz
+
+            # Data directory lives on the root volume.
+            mkdir -p /data
+
+            # systemd unit runs the native binary.
+            cat > /etc/systemd/system/typesense.service <<'UNIT'
+            [Unit]
+            Description=Typesense search server
+            After=network.target
+
+            [Service]
+            ExecStart=/usr/local/bin/typesense-server --data-dir /data --api-key=${TypesenseApiKey} --enable-cors=${EnableCors}
+            Restart=always
+            User=root
+
+            [Install]
+            WantedBy=multi-user.target
+            UNIT
+
+            systemctl daemon-reload
+            systemctl enable --now typesense
+
+Outputs:
+  TypesenseEndpoint:
+    Description: Host:port Moodle should use for the Typesense search engine (http://).
+    Value: !Sub "http://${TypesenseInstance.PrivateIp}:8108"
+  TypesensePrivateIp:
+    Description: Private IP of the Typesense instance.
+    Value: !Sub "${TypesenseInstance.PrivateIp}"
+  TypesenseInstanceId:
+    Description: EC2 instance id (use SSM Session Manager to access).
+    Value: !Ref TypesenseInstance
+  TypesenseSecurityGroupId:
+    Description: Security group id (open 8108 to Moodle only).
+    Value: !Ref TypesenseSecurityGroup
