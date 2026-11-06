@@ -35,6 +35,13 @@ defined('MOODLE_INTERNAL') || die();
 class engine extends \core_search\engine {
 
     /**
+     * Total number of results from the most recent query.
+     *
+     * @var null|int
+     */
+    protected $totalresults = null;
+
+    /**
      * Whether the plugin is fully configured.
      *
      * @return bool
@@ -77,30 +84,39 @@ class engine extends \core_search\engine {
     /**
      * Typesense schema for a Moodle search collection.
      *
+     * The full Moodle document is stored (as JSON) in `docdata` so it can be
+     * faithfully reconstructed; the remaining fields are indexed for filtering
+     * and/or searching.
+     *
      * @return array
      */
     protected function get_schema_fields() {
         $locale = get_config('search_typesense', 'locale');
-        $fields = [];
-        foreach (['title', 'content', 'description1', 'description2'] as $name) {
+        $textfield = function ($name) use ($locale) {
             $field = ['name' => $name, 'type' => 'string'];
             if (!empty($locale)) {
                 $field['locale'] = $locale;
             }
-            $fields[] = $field;
-        }
-        $fields[] = ['name' => 'id', 'type' => 'string'];
-        $fields[] = ['name' => 'areaid', 'type' => 'string', 'facet' => true];
-        $fields[] = ['name' => 'courseid', 'type' => 'int32', 'facet' => true, 'optional' => true];
-        $fields[] = ['name' => 'contextid', 'type' => 'int32', 'facet' => true, 'optional' => true];
-        $fields[] = ['name' => 'userid', 'type' => 'int32', 'optional' => true];
-        $fields[] = ['name' => 'groupid', 'type' => 'int32', 'optional' => true];
-        // 'modified' doubles as the default sorting field; int32 keeps us safe
-        // until 2038 (epoch seconds fit in a signed 32-bit int until then).
-        $fields[] = ['name' => 'modified', 'type' => 'int32'];
-        $fields[] = ['name' => 'timestart', 'type' => 'int32', 'optional' => true];
-        $fields[] = ['name' => 'timeend', 'type' => 'int32', 'optional' => true];
-        $fields[] = ['name' => 'type', 'type' => 'string', 'optional' => true];
+            return $field;
+        };
+
+        $fields = [
+            ['name' => 'id', 'type' => 'string'],
+            ['name' => 'areaid', 'type' => 'string', 'facet' => true],
+            ['name' => 'courseid', 'type' => 'int32', 'facet' => true, 'optional' => true],
+            ['name' => 'contextid', 'type' => 'int32', 'facet' => true, 'optional' => true],
+            ['name' => 'userid', 'type' => 'int32', 'optional' => true],
+            ['name' => 'owneruserid', 'type' => 'int32', 'optional' => true],
+            ['name' => 'groupid', 'type' => 'int32', 'optional' => true],
+            // 'modified' doubles as the default sorting field; int32 keeps us safe
+            // until 2038 (epoch seconds fit in a signed 32-bit int until then).
+            ['name' => 'modified', 'type' => 'int32'],
+            $textfield('title'),
+            $textfield('content'),
+            $textfield('description1'),
+            $textfield('description2'),
+            ['name' => 'docdata', 'type' => 'string'],
+        ];
         return $fields;
     }
 
@@ -119,19 +135,23 @@ class engine extends \core_search\engine {
     }
 
     /**
-     * Check the server is reachable and configured.
+     * Check the server is reachable, configured, and the collection exists.
      *
-     * @return bool
+     * @return true|string Returns true if all good or an error string.
      */
     public function is_server_ready() {
         if (!$this->is_installed()) {
-            return false;
+            return get_string('notconfigured', 'search_typesense');
         }
         try {
-            return $this->get_client()->health();
+            if (!$this->get_client()->health()) {
+                return get_string('servernotready', 'search_typesense');
+            }
+            $this->ensure_collection();
         } catch (\moodle_exception $e) {
-            return false;
+            return $e->getMessage();
         }
+        return true;
     }
 
     /**
@@ -159,180 +179,235 @@ class engine extends \core_search\engine {
      * @return array
      */
     protected function map_document(\core_search\document $document) {
+        $data = $document->export_for_engine();
         $int = function ($value) {
-            $value = (int)$value;
-            return $value ?: 0;
+            return (int)$value;
         };
         return [
-            'id'           => $document->get_id(),
-            'title'        => $document->get_title(),
-            'content'      => $document->get_content(),
-            'description1' => $document->get_description1(),
-            'description2' => $document->get_description2(),
-            'areaid'       => $document->get_area_id(),
-            'courseid'     => $int($document->get_course_id()),
-            'contextid'    => $int($document->get_context_id()),
-            'userid'       => $int($document->get_user_id()),
-            'groupid'      => $int($document->get_group_id()),
-            'modified'     => $int($document->get_modified()),
-            'timestart'    => $int($document->get_timestart()),
-            'timeend'      => $int($document->get_timeend()),
-            'type'         => $document->get_type(),
+            'id'           => (string)$data['id'],
+            'areaid'       => (string)$data['areaid'],
+            'courseid'     => $int($data['courseid'] ?? 0),
+            'contextid'    => $int($data['contextid'] ?? 0),
+            'userid'       => $int($data['userid'] ?? 0),
+            'owneruserid'  => $int($data['owneruserid'] ?? 0),
+            'groupid'      => $int($data['groupid'] ?? 0),
+            'type'         => $int($data['type'] ?? 1),
+            'modified'     => $int($data['modified'] ?? 0),
+            'title'        => (string)($data['title'] ?? ''),
+            'content'      => (string)($data['content'] ?? ''),
+            'description1' => (string)($data['description1'] ?? ''),
+            'description2' => (string)($data['description2'] ?? ''),
+            'docdata'      => json_encode($data),
         ];
     }
 
     /**
-     * Add a single document to the index.
+     * Adds a document to the search engine.
+     *
+     * Called by the parent's add_documents() iterator for each document.
      *
      * @param \core_search\document $document
-     * @return void
+     * @param bool $fileindexing True if file indexing is to be used
+     * @return bool False if the document failed, true on success
      */
-    protected function add_document($document) {
+    public function add_document($document, $fileindexing = false) {
         $collection = $this->ensure_collection();
-        $this->get_client()->add_document($collection, $this->map_document($document));
+        try {
+            $this->get_client()->add_document($collection, $this->map_document($document));
+        } catch (\moodle_exception $e) {
+            debugging('Typesense add_document failed for ' . $document->get_id() . ': ' . $e->getMessage(),
+                DEBUG_DEVELOPER);
+            return false;
+        }
+        return true;
     }
 
     /**
-     * Add multiple documents to the index (bulk import).
+     * Delete a single document by its id.
      *
-     * @param \core_search\document[] $documents
+     * @param string $id The document id to delete
      * @return void
      */
-    protected function add_documents($documents) {
-        $collection = $this->ensure_collection();
-        $mapped = [];
-        foreach ($documents as $document) {
-            $mapped[] = $this->map_document($document);
-        }
-        if (!empty($mapped)) {
-            $this->get_client()->import_documents($collection, $mapped);
-        }
+    public function delete_by_id($id) {
+        $collection = $this->get_collection_name();
+        $this->get_client()->delete_document($collection, $id);
     }
 
     /**
-     * Delete all documents belonging to a search area.
+     * Delete all of an area's documents, or the whole index.
      *
-     * @param \core_search\area\base $area
+     * @param string|null $areaid
      * @return void
      */
-    protected function delete_by_area($area) {
+    public function delete($areaid = null) {
         $collection = $this->get_collection_name();
-        $this->get_client()->delete_by_filter($collection, 'areaid:' . $area->get_area_id());
+        $client = $this->get_client();
+        if ($areaid) {
+            $client->delete_by_filter($collection, 'areaid:"' . str_replace('"', '', $areaid) . '"');
+        } else {
+            // Removing the entire collection is the simplest way to wipe the index.
+            try {
+                $client->delete_collection($collection);
+            } catch (\moodle_exception $e) {
+                // Already gone; ignore.
+            }
+            $this->ensure_collection();
+        }
     }
 
     /**
-     * Delete a single document by area + item id.
+     * Deletes the index for a single context.
      *
-     * @param string $areaid
-     * @param int $itemid
-     * @return void
+     * @param int $oldcontextid
+     * @return bool True if data was deleted
      */
-    protected function delete_by_id($areaid, $itemid) {
-        $collection = $this->get_collection_name();
-        $this->get_client()->delete_document($collection, $areaid . '-' . $itemid);
+    public function delete_index_for_context(int $oldcontextid) {
+        $this->get_client()->delete_by_filter($this->get_collection_name(), 'contextid:' . (int)$oldcontextid);
+        return true;
     }
 
     /**
-     * Delete a document, optionally narrowing by context/user/group/date.
+     * Deletes the index for a single course.
      *
-     * @param string $areaid
-     * @param int $itemid
-     * @param int|null $contextid
-     * @param int|null $userid
-     * @param int|null $groupid
-     * @param int|null $timestart
-     * @param int|null $timeend
-     * @return void
+     * @param int $oldcourseid
+     * @return bool True if data was deleted
      */
-    protected function delete($areaid, $itemid, $contextid = null, $userid = null, $groupid = null,
-                              $timestart = null, $timeend = null) {
-        $collection = $this->get_collection_name();
-        $this->get_client()->delete_document($collection, $areaid . '-' . $itemid);
+    public function delete_index_for_course(int $oldcourseid) {
+        $this->get_client()->delete_by_filter($this->get_collection_name(), 'courseid:' . (int)$oldcourseid);
+        return true;
     }
 
     /**
-     * Build a Typesense filter_by expression from a Moodle search query.
+     * Runs a query using the given filters and access info.
      *
-     * @param \core_search\query $query
-     * @return string
+     * @param \stdClass $filters Containing query and filters.
+     * @param array|true $accessinfo Contexts where the user has access (true = all).
+     * @param int $limit The maximum number of results to return.
+     * @return \core_search\document[] Results or empty array if none.
+     * @throws \core_search\engine_exception
      */
-    protected function build_filter($query) {
-        $filters = [];
-
-        $areaids = $query->get_area_ids();
-        if (!empty($areaids)) {
-            $quoted = array_map(function ($a) {
-                return '"' . str_replace('"', '', $a) . '"';
-            }, $areaids);
-            $filters[] = 'areaid:[' . implode(',', $quoted) . ']';
+    public function execute_query($filters, $accessinfo, $limit = 0) {
+        if ($this->is_server_ready() !== true) {
+            throw new \core_search\engine_exception('engineserverstatus', 'search');
         }
 
-        $contextids = $query->get_context_ids();
-        if (!empty($contextids)) {
-            $filters[] = 'contextid:[' . implode(',', $contextids) . ']';
+        if (empty($limit)) {
+            $limit = \core_search\manager::MAX_RESULTS;
         }
 
-        $courseid = $query->get_course_id();
-        if ($courseid) {
-            $filters[] = 'courseid:=' . (int)$courseid;
-        }
-
-        $timestart = $query->get_timestart();
-        if ($timestart) {
-            $filters[] = 'modified:>=' . (int)$timestart;
-        }
-        $timeend = $query->get_timeend();
-        if ($timeend) {
-            $filters[] = 'modified:<=' . (int)$timeend;
-        }
-
-        return implode(' && ', $filters);
-    }
-
-    /**
-     * Run a search and return Moodle documents.
-     *
-     * @param \core_search\query $query
-     * @param int $from
-     * @param int $limit
-     * @return \core_search\document[]
-     */
-    protected function search($query, $from = 0, $limit = 10) {
-        $collection = $this->get_collection_name();
-
-        $q = $query->get_query();
+        $q = $filters->q ?? '';
         if ($q === '' || $q === null) {
             $q = '*';
-        }
-
-        $sort = '_text_match:desc,modified:desc';
-        if (defined('\\core_search\\manager::ORDER_MODIFIED') &&
-            $query->get_order() == \core_search\manager::ORDER_MODIFIED) {
-            $sort = 'modified:desc';
         }
 
         $params = [
             'q'        => $q,
             'query_by' => 'title,content,description1,description2',
-            'filter_by' => $this->build_filter($query),
-            'sort_by'  => $sort,
             'per_page' => (int)$limit,
-            'page'     => floor($from / max(1, $limit)) + 1,
+            'page'     => isset($filters->page) ? max(1, (int)$filters->page) : 1,
         ];
 
-        $results = $this->get_client()->search($collection, $params);
-        $documents = [];
-        if (!empty($results['hits'])) {
-            foreach ($results['hits'] as $hit) {
-                if (empty($hit['document'])) {
+        // Build the filter_by expression, mirroring the access rules used by the
+        // simple DB engine: restrict to the user's allowed contexts and to docs
+        // they own (or docs with no owner).
+        $fb = [];
+
+        if ($accessinfo && is_array($accessinfo)) {
+            $contexts = [];
+            foreach ($accessinfo as $areaid => $areacontexts) {
+                if (!empty($filters->areaids) && !in_array($areaid, $filters->areaids)) {
                     continue;
                 }
-                $documents[] = \core_search\document::create(
-                    $hit['document']['areaid'],
-                    (object)$hit['document']
-                );
+                foreach ($areacontexts as $contextid) {
+                    $contexts[$contextid] = $contextid;
+                }
+            }
+            if (empty($contexts)) {
+                // No valid contexts => no results.
+                $this->totalresults = 0;
+                return [];
+            }
+            $fb[] = 'contextid:[' . implode(',', $contexts) . ']';
+        }
+
+        if (!empty($filters->areaids)) {
+            $quoted = array_map(function ($a) {
+                return '"' . str_replace('"', '', $a) . '"';
+            }, $filters->areaids);
+            $fb[] = 'areaid:[' . implode(',', $quoted) . ']';
+        }
+
+        if (!empty($filters->courseids)) {
+            $fb[] = 'courseid:[' . implode(',', $filters->courseids) . ']';
+        }
+
+        if (!empty($filters->timestart)) {
+            $fb[] = 'modified:>=' . (int)$filters->timestart;
+        }
+        if (!empty($filters->timeend)) {
+            $fb[] = 'modified:<=' . (int)$filters->timeend;
+        }
+
+        global $USER;
+        $fb[] = '(owneruserid:0 || owneruserid:' . (int)$USER->id . ')';
+
+        if (!empty($fb)) {
+            $params['filter_by'] = implode(' && ', $fb);
+        }
+
+        if (!empty($filters->order)) {
+            if ($filters->order == \core_search\manager::SORT_DATE_DESC) {
+                $params['sort_by'] = 'modified:desc';
+            } else if ($filters->order == \core_search\manager::SORT_DATE_ASC) {
+                $params['sort_by'] = 'modified:asc';
             }
         }
-        return $documents;
+
+        $results = $this->get_client()->search($this->get_collection_name(), $params);
+        $this->totalresults = (int)($results['found'] ?? 0);
+
+        $docs = [];
+        $numgranted = 0;
+        foreach ($results['hits'] ?? [] as $hit) {
+            $docdata = json_decode($hit['document']['docdata'] ?? '{}', true);
+            if (empty($docdata) || empty($docdata['areaid']) || !isset($docdata['itemid'])) {
+                continue;
+            }
+
+            if (!$searcharea = $this->get_search_area($docdata['areaid'])) {
+                continue;
+            }
+
+            $access = $searcharea->check_access($docdata['itemid']);
+            if ($access == \core_search\manager::ACCESS_DELETED) {
+                $this->delete_by_id($docdata['id']);
+                $this->totalresults--;
+                continue;
+            }
+            if ($access == \core_search\manager::ACCESS_DENIED) {
+                $this->totalresults--;
+                continue;
+            }
+
+            $docs[] = $this->to_document($searcharea, $docdata);
+            $numgranted++;
+            if ($numgranted >= $limit) {
+                break;
+            }
+        }
+
+        return $docs;
+    }
+
+    /**
+     * Returns the total results of the most recent query.
+     *
+     * @return int
+     */
+    public function get_query_total_count() {
+        if (is_null($this->totalresults)) {
+            return \core_search\manager::MAX_RESULTS;
+        }
+        return $this->totalresults;
     }
 }
