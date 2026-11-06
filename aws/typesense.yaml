@@ -6,6 +6,9 @@ Description: >
   (access via SSM Session Manager). Typesense runs as a native binary under systemd
   (no Docker), so there is no container runtime or image-pull dependency.
 
+  Hardening mirrors the Escoffier training-moodle83 stack (IMDSv2, encrypted EBS,
+  reused SSMinstanceRole) to satisfy account CloudFormation guardrails.
+
 Parameters:
   VpcId:
     Type: AWS::EC2::VPC::Id
@@ -18,6 +21,16 @@ Parameters:
   MoodleSecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
     Description: Security group of the Moodle web servers; only this group may reach Typesense on 8108.
+
+  InstanceProfileName:
+    Type: String
+    Default: SSMinstanceRole
+    Description: Existing instance profile (Session Manager + CloudWatch). Reused to avoid creating IAM.
+
+  AMIId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-052b3645c2c811821
+    Description: Amazon Linux 2023 AMI (us-east-2), same as the training-moodle83 host.
 
   InstanceType:
     Type: String
@@ -65,42 +78,29 @@ Resources:
           FromPort: 8108
           ToPort: 8108
           SourceSecurityGroupId: !Ref MoodleSecurityGroupId
-
-  TypesenseRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ec2.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-
-  TypesenseInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Roles:
-        - !Ref TypesenseRole
+      Tags:
+        - {Key: Name, Value: moodle-typesense-stage}
+        - {Key: Project, Value: moodle-stage}
 
   TypesenseInstance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId:
-        Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-        Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+      ImageId: !Ref AMIId
       InstanceType: !Ref InstanceType
       SubnetId: !Ref SubnetId
       SecurityGroupIds:
         - !Ref TypesenseSecurityGroup
-      IamInstanceProfile: !Ref TypesenseInstanceProfile
+      IamInstanceProfile: !Ref InstanceProfileName
+      MetadataOptions:
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+        HttpEndpoint: enabled
       BlockDeviceMappings:
         - DeviceName: /dev/xvda
           Ebs:
             VolumeSize: !Ref RootVolumeSize
             VolumeType: gp3
+            Encrypted: true
       UserData:
         Fn::Base64:
           !Sub |
@@ -141,6 +141,10 @@ Resources:
 
             systemctl daemon-reload
             systemctl enable --now typesense
+      Tags:
+        - {Key: Name, Value: moodle-typesense-stage}
+        - {Key: Project, Value: moodle-stage}
+        - {Key: b2b-moodle, Value: typesense}
 
 Outputs:
   TypesenseEndpoint:
