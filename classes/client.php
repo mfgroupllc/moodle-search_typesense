@@ -62,6 +62,13 @@ class client {
         $this->protocol = $protocol;
         $this->apikey = $apikey;
         $this->verifytls = (bool)$verifytls;
+        // \curl is defined in lib/filelib.php. The web bootstrap loads it, but
+        // the CLI bootstrap (e.g. the search indexer) does not, so ensure it is
+        // available in both contexts.
+        global $CFG;
+        if (!class_exists('curl')) {
+            require_once($CFG->libdir . '/filelib.php');
+        }
         // Typesense is reached over the internal VPC via a private IP
         // (e.g. 10.x), which Moodle's curl security helper blocks by default.
         // ignoresecurity lets our requests through (we still authenticate with
