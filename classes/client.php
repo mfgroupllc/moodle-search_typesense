@@ -69,10 +69,11 @@ class client {
         // When talking https to a Typesense instance using a self-signed
         // certificate (the default for this plugin's CloudFormation template),
         // peer/host verification must be disabled or every request fails.
+        // Moodle's \curl expects string option names, not PHP constants.
         if ($this->protocol === 'https' && !$this->verifytls) {
             $this->curl->setopt([
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => 0,
+                'CURLOPT_SSL_VERIFYPEER' => false,
+                'CURLOPT_SSL_VERIFYHOST' => 0,
             ]);
         }
     }
