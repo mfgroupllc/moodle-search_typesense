@@ -62,7 +62,11 @@ class client {
         $this->protocol = $protocol;
         $this->apikey = $apikey;
         $this->verifytls = (bool)$verifytls;
-        $this->curl = new \curl();
+        // Typesense is reached over the internal VPC via a private IP
+        // (e.g. 10.x), which Moodle's curl security helper blocks by default.
+        // ignoresecurity lets our requests through (we still authenticate with
+        // the API key and, optionally, TLS-encrypt the channel).
+        $this->curl = new \curl(['ignoresecurity' => true]);
         $this->curl->setHeader('X-TYPESENSE-API-KEY: ' . $this->apikey);
         $this->curl->setHeader('Content-Type: application/json');
 
@@ -170,6 +174,9 @@ class client {
     public function list_collections() {
         $response = $this->request('get', '/collections');
         $decoded = json_decode($response, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
         $names = [];
         foreach ($decoded as $coll) {
             $names[] = $coll['name'];
