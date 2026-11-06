@@ -215,7 +215,7 @@ class engine extends \core_search\engine {
         try {
             $this->get_client()->add_document($collection, $this->map_document($document));
         } catch (\moodle_exception $e) {
-            debugging('Typesense add_document failed for ' . $document->get_id() . ': ' . $e->getMessage(),
+            debugging('Typesense add_document failed for ' . $document->get('id') . ': ' . $e->getMessage(),
                 DEBUG_DEVELOPER);
             return false;
         }
