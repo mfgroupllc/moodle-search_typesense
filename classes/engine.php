@@ -60,7 +60,8 @@ class engine extends \core_search\engine {
             get_config('search_typesense', 'host'),
             get_config('search_typesense', 'port'),
             get_config('search_typesense', 'protocol'),
-            get_config('search_typesense', 'apikey')
+            get_config('search_typesense', 'apikey'),
+            get_config('search_typesense', 'verifytls') !== '0'
         );
     }
 

@@ -47,8 +47,16 @@ if ($hassiteconfig) {
         'search_typesense/protocol',
         get_string('protocol', 'search_typesense'),
         get_string('protocol_desc', 'search_typesense'),
-        'http',
+        'https',
         ['http' => 'http', 'https' => 'https']
+    ));
+
+    $settings->add(new admin_setting_configselect(
+        'search_typesense/verifytls',
+        get_string('verifytls', 'search_typesense'),
+        get_string('verifytls_desc', 'search_typesense'),
+        '0',
+        ['1' => get_string('yes'), '0' => get_string('no')]
     ));
 
     $settings->add(new admin_setting_configpasswordunmask(

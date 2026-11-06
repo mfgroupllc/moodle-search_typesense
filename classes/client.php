@@ -44,6 +44,8 @@ class client {
     protected $apikey;
     /** @var \curl $curl */
     protected $curl;
+    /** @var bool $verifytls Whether to verify the TLS certificate (off for self-signed). */
+    protected $verifytls;
 
     /**
      * Constructor.
@@ -52,15 +54,27 @@ class client {
      * @param int $port Typesense port.
      * @param string $protocol http|https.
      * @param string $apikey API key.
+     * @param bool $verifytls Whether to verify the TLS certificate. Set false for a self-signed cert.
      */
-    public function __construct($host, $port, $protocol, $apikey) {
+    public function __construct($host, $port, $protocol, $apikey, $verifytls = true) {
         $this->host = $host;
         $this->port = (int)$port;
         $this->protocol = $protocol;
         $this->apikey = $apikey;
+        $this->verifytls = (bool)$verifytls;
         $this->curl = new \curl();
         $this->curl->setHeader('X-TYPESENSE-API-KEY: ' . $this->apikey);
         $this->curl->setHeader('Content-Type: application/json');
+
+        // When talking https to a Typesense instance using a self-signed
+        // certificate (the default for this plugin's CloudFormation template),
+        // peer/host verification must be disabled or every request fails.
+        if ($this->protocol === 'https' && !$this->verifytls) {
+            $this->curl->setopt([
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => 0,
+            ]);
+        }
     }
 
     /**

@@ -49,10 +49,11 @@ Parameters:
 
   TypesenseVersion:
     Type: String
-    Default: latest
+    Default: 27.1
     Description: >
-      Typesense version to install, e.g. "27.1". "latest" resolves to the newest
-      GitHub release at deployment time. Pin to a specific version for production reproducibility.
+      Typesense version to install, e.g. "27.1". Pinned by default for
+      reproducible deployments. "latest" resolves to the newest GitHub release
+      at deployment time.
 
   TypesenseApiKey:
     Type: String
@@ -107,12 +108,18 @@ Resources:
             #!/bin/bash
             set -euo pipefail
 
-            # Resolve the Typesense version (default "latest" -> newest GitHub release).
+            # Resolve the Typesense version. "latest" -> newest GitHub release.
+            # Strip any leading "v" so the download URL is correct
+            # (asset path is "27.1", not "v27.1"). Fall back to a pinned
+            # default if the network lookup returns nothing, so we never
+            # abort before writing the systemd unit.
             VERSION="${TypesenseVersion}"
             if [ "$VERSION" = "latest" ]; then
               VERSION=$(curl -fsSL https://api.github.com/repos/typesense/typesense/releases/latest \
-                | grep -oP '"tag_name":\s*"\K[^"]+')
+                | grep -oP '"tag_name":\s*"\K[^"]+' || true)
+              [ -z "$VERSION" ] && VERSION="27.1"
             fi
+            VERSION=$(echo "$VERSION" | sed 's/^v//')
 
             # Download and install the single static binary.
             URL="https://dl.typesense.org/releases/$VERSION/typesense-server-$VERSION-linux-amd64.tar.gz"
@@ -124,14 +131,20 @@ Resources:
             # Data directory lives on the root volume.
             mkdir -p /data
 
-            # systemd unit runs the native binary.
+            # Self-signed certificate so Moodle talks to Typesense over TLS.
+            # (Internal VPC traffic; we still encrypt the API key + query content.)
+            openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+              -keyout /data/typesense.key -out /data/typesense.crt \
+              -subj "/CN=typesense.moodle-stage"
+
+            # systemd unit runs the native binary with TLS enabled.
             cat > /etc/systemd/system/typesense.service <<'UNIT'
             [Unit]
             Description=Typesense search server
             After=network.target
 
             [Service]
-            ExecStart=/usr/local/bin/typesense-server --data-dir /data --api-key=${TypesenseApiKey} --enable-cors=${EnableCors}
+            ExecStart=/usr/local/bin/typesense-server --data-dir /data --api-key=${TypesenseApiKey} --enable-cors=${EnableCors} --ssl-certificate /data/typesense.crt --ssl-certificate-key /data/typesense.key
             Restart=always
             User=root
 
@@ -148,8 +161,8 @@ Resources:
 
 Outputs:
   TypesenseEndpoint:
-    Description: Host:port Moodle should use for the Typesense search engine (http://).
-    Value: !Sub "http://${TypesenseInstance.PrivateIp}:8108"
+    Description: Host:port Moodle should use for the Typesense search engine (https://, self-signed cert).
+    Value: !Sub "https://${TypesenseInstance.PrivateIp}:8108"
   TypesensePrivateIp:
     Description: Private IP of the Typesense instance.
     Value: !Sub "${TypesenseInstance.PrivateIp}"
