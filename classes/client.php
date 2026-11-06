@@ -228,14 +228,19 @@ class client {
     }
 
     /**
-     * Add (upsert) a single document.
+     * Add or update a single document.
+     *
+     * Uses Typesense's upsert action so that re-indexing (or incremental
+     * updates of an existing document id) replaces the document instead of
+     * failing with a 409 "already exists" conflict. get_info() does not report
+     * a body on the redirect-free upsert, so we send as a plain POST.
      *
      * @param string $collection
      * @param array $document
      * @return mixed
      */
     public function add_document($collection, array $document) {
-        $path = '/collections/' . rawurlencode($collection) . '/documents';
+        $path = '/collections/' . rawurlencode($collection) . '/documents?action=upsert';
         return json_decode($this->request('post', $path, $document), true);
     }
 
