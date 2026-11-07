@@ -320,8 +320,15 @@ class client {
      * @return array
      */
     public function search($collection, array $params) {
-        $path = '/collections/' . rawurlencode($collection) . '/documents/search';
-        $response = $this->request('get', $path, null, $params);
-        return json_decode($response, true);
+        // Put search parameters in the POST body. Moodle can generate a long
+        // filter_by expression for users with access to many contexts, which
+        // can exceed Typesense's 4,000 character query-string limit when sent
+        // to /collections/:collection/documents/search as a GET request.
+        $body = [
+            'searches' => [array_merge(['collection' => $collection], $params)],
+        ];
+        $response = $this->request('post', '/multi_search', $body);
+        $decoded = json_decode($response, true);
+        return $decoded['results'][0] ?? [];
     }
 }
