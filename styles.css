@@ -35,6 +35,14 @@
 }
 
 .search-typesense-area-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    background-color: #f8f9fa;
+    color: #343a40;
     font-size: 0.75rem;
     font-weight: 500;
+    line-height: 1.2;
 }
