@@ -69,11 +69,23 @@ class course_scope {
     }
 
     /**
+     * Whether the mod_videotime plugin is installed on this Moodle site.
+     *
+     * @return bool
+     */
+    public static function videotime_installed(): bool {
+        return \core_component::get_component_directory('mod_videotime') !== null;
+    }
+
+    /**
      * Return enabled Video Time search area IDs when the mod_videotime plugin is installed and enabled.
      *
      * @return string[]
      */
     public static function videotime_areaids(): array {
+        if (!self::videotime_installed()) {
+            return [];
+        }
         $enabled = \core_search\manager::get_search_areas_list(true);
         $ids = [];
         foreach (array_keys($enabled) as $areaid) {
@@ -85,12 +97,42 @@ class course_scope {
     }
 
     /**
-     * Whether any Video Time search area is enabled on this site.
+     * Whether the dedicated Video Time search tab/pill is available and enabled in settings.
      *
      * @return bool
      */
     public static function videotime_available(): bool {
+        $enabled = get_config('search_typesense', 'enablevideotimetab');
+        if ($enabled !== false && $enabled !== null && (string)$enabled === '0') {
+            return false;
+        }
         return (bool)self::videotime_areaids();
+    }
+
+    /**
+     * Return the display label for the Video Time search tab/pill, falling back to the language string.
+     *
+     * @return string
+     */
+    public static function videotime_label(): string {
+        $custom = trim((string)get_config('search_typesense', 'videotimetablabel'));
+        if ($custom !== '') {
+            return format_string($custom, true, ['context' => \context_system::instance()]);
+        }
+        return get_string('scopevideotime', 'search_typesense');
+    }
+
+    /**
+     * Return the display label for any valid scope identifier.
+     *
+     * @param string $scope Scope identifier ('current', 'historical', 'all', 'videotime').
+     * @return string
+     */
+    public static function scope_label(string $scope): string {
+        if ($scope === 'videotime') {
+            return self::videotime_label();
+        }
+        return get_string('scope' . $scope, 'search_typesense');
     }
 
     /**

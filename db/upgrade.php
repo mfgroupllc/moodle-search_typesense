@@ -51,5 +51,15 @@ function xmldb_search_typesense_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026110801, 'search', 'typesense');
     }
 
+    if ($oldversion < 2026110802) {
+        if (get_config('search_typesense', 'enablevideotimetab') === false) {
+            set_config('enablevideotimetab', 1, 'search_typesense');
+        }
+        if (get_config('search_typesense', 'videotimetablabel') === false) {
+            set_config('videotimetablabel', get_string('scopevideotime', 'search_typesense'), 'search_typesense');
+        }
+        upgrade_plugin_savepoint(true, 2026110802, 'search', 'typesense');
+    }
+
     return true;
 }

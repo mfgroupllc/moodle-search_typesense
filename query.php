@@ -217,7 +217,7 @@ if (count($validscopes) > 1) {
             : '';
         $label = html_writer::tag(
             'span',
-            get_string('scope' . $linkscope, 'search_typesense'),
+            course_scope::scope_label($linkscope),
             ['class' => 'search-typesense-nav-pill__label']
         );
         $links[] = html_writer::link($scopeurl, $indicator . $label, $attributes);

@@ -37,6 +37,12 @@ function xmldb_search_typesense_install(): bool {
             'search_typesense'
         );
     }
+    if (get_config('search_typesense', 'enablevideotimetab') === false) {
+        set_config('enablevideotimetab', 1, 'search_typesense');
+    }
+    if (get_config('search_typesense', 'videotimetablabel') === false) {
+        set_config('videotimetablabel', get_string('scopevideotime', 'search_typesense'), 'search_typesense');
+    }
     try {
         \search_typesense\course_scope::apply_inferred_categories(true);
     } catch (\Throwable $e) {

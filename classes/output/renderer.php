@@ -75,7 +75,7 @@ class renderer extends \core_search\output\renderer {
                 $toprow['search_typesense_videotime'] = new \tabobject(
                     'search_typesense_videotime',
                     $vturl,
-                    get_string('scopevideotime', 'search_typesense')
+                    \search_typesense\course_scope::videotime_label()
                 );
             }
 
