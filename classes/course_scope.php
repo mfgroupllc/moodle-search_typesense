@@ -69,6 +69,44 @@ class course_scope {
     }
 
     /**
+     * Return enabled Video Time search area IDs when the mod_videotime plugin is installed and enabled.
+     *
+     * @return string[]
+     */
+    public static function videotime_areaids(): array {
+        $enabled = \core_search\manager::get_search_areas_list(true);
+        $ids = [];
+        foreach (array_keys($enabled) as $areaid) {
+            if (strpos((string)$areaid, 'mod_videotime-') === 0) {
+                $ids[] = (string)$areaid;
+            }
+        }
+        return $ids;
+    }
+
+    /**
+     * Whether any Video Time search area is enabled on this site.
+     *
+     * @return bool
+     */
+    public static function videotime_available(): bool {
+        return (bool)self::videotime_areaids();
+    }
+
+    /**
+     * Return the list of valid scope identifiers for the current site.
+     *
+     * @return string[]
+     */
+    public static function valid_scopes(): array {
+        $scopes = self::configured() ? ['current', 'historical', 'all'] : ['all'];
+        if (self::videotime_available()) {
+            $scopes[] = 'videotime';
+        }
+        return $scopes;
+    }
+
+    /**
      * Whether a category path or name represents an explicit archive or trash folder.
      *
      * @param string $pathorname Category name or slash-separated path of names.
@@ -94,6 +132,9 @@ class course_scope {
         global $DB;
         if ($scope === 'all') {
             return null;
+        }
+        if ($scope === 'videotime') {
+            return self::configured() ? self::courseids('current') : null;
         }
         if (!in_array($scope, ['current', 'historical'], true)) {
             throw new \invalid_parameter_exception('Unknown course search scope');

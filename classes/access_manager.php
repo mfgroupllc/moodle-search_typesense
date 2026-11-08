@@ -95,7 +95,7 @@ class access_manager extends \core_search\manager {
         $scope = $explicit;
         if (property_exists($filters, 'scopecourseids') && $filters->scopecourseids !== null) {
             $ids = self::normalise_ids((array)$filters->scopecourseids);
-            if ($ids && $explicit === null && ($filters->scope ?? 'current') === 'current') {
+            if ($ids && $explicit === null && in_array($filters->scope ?? 'current', ['current', 'videotime'], true)) {
                 $ids[] = (int)SITEID;
                 $ids = self::normalise_ids($ids);
             }

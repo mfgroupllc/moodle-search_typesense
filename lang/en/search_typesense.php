@@ -73,6 +73,7 @@ $string['userprofilefields_followidentity'] = 'Follow Moodle "Show user identity
 $string['scopecurrent'] = 'Current courses';
 $string['scopehistorical'] = 'Historical / other courses';
 $string['scopeall'] = 'Search everything';
+$string['scopevideotime'] = 'Video Time videos';
 $string['searchlimited'] = 'The search reached its processing limit. More matches may exist. Try a more specific query or course filter.';
 $string['privacy:metadata:typesense'] = 'The Typesense search engine sends indexed course and user content to the configured Typesense server to fulfill search queries.';
 $string['privacy:metadata:typesense:userid'] = 'The ID of the user who authored the indexed document.';

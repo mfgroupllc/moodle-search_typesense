@@ -35,6 +35,74 @@ defined('MOODLE_INTERNAL') || die();
  */
 class renderer extends \core_search\output\renderer {
     /**
+     * Renders search results, injecting a dedicated Video Time tab when mod_videotime is enabled.
+     *
+     * @param \core_search\document[] $results Search hits.
+     * @param int $page Zero-based page number.
+     * @param int $totalcount Total number of results available.
+     * @param \moodle_url $url Current search URL.
+     * @param \core_search\area_category|null $cat Selected search area category or null.
+     * @return string HTML
+     */
+    public function render_results($results, $page, $totalcount, $url, $cat = null) {
+        $content = '';
+
+        if (\core_search\manager::is_search_area_categories_enabled() && !empty($cat)) {
+            $toprow = [];
+            foreach (\core_search\manager::get_search_area_categories() as $category) {
+                $taburl = clone $url;
+                $taburl->param('cat', $category->get_name());
+                $taburl->param('page', 0);
+                $taburl->remove_params(['page', 'areaids']);
+                if ($taburl->get_param('scope') === 'videotime') {
+                    $taburl->param('scope', \search_typesense\course_scope::default_scope());
+                }
+                $toprow[$category->get_name()] = new \tabobject(
+                    $category->get_name(),
+                    $taburl,
+                    $category->get_visiblename()
+                );
+            }
+
+            if (\core_search\manager::should_hide_all_results_category()) {
+                unset($toprow[\core_search\manager::SEARCH_AREA_CATEGORY_ALL]);
+            }
+
+            if (\search_typesense\course_scope::videotime_available()) {
+                $vturl = clone $url;
+                $vturl->param('scope', 'videotime');
+                $vturl->remove_params(['page', 'areaids', 'cat']);
+                $toprow['search_typesense_videotime'] = new \tabobject(
+                    'search_typesense_videotime',
+                    $vturl,
+                    get_string('scopevideotime', 'search_typesense')
+                );
+            }
+
+            $activecat = ($url->get_param('scope') === 'videotime')
+                ? 'search_typesense_videotime'
+                : $cat->get_name();
+            $content .= $this->tabtree($toprow, $activecat);
+        }
+
+        // Paging bar.
+        $perpage = \core_search\manager::DISPLAY_RESULTS_PER_PAGE;
+        $content .= $this->output->paging_bar($totalcount, $page, $perpage, $url);
+
+        // Results.
+        $resultshtml = [];
+        foreach ($results as $hit) {
+            $resultshtml[] = $this->render_result($hit);
+        }
+        $content .= \html_writer::tag('div', implode('<hr/>', $resultshtml), ['class' => 'search-results']);
+
+        // Paging bar.
+        $content .= $this->output->paging_bar($totalcount, $page, $perpage, $url);
+
+        return $content;
+    }
+
+    /**
      * Display a single search result with deduplicated context and course links.
      *
      * @param \core_search\document $doc Search document to display.

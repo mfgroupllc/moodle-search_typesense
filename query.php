@@ -33,9 +33,8 @@ $page = max(0, optional_param('page', 0, PARAM_INT));
 $q = optional_param('q', '', PARAM_NOTAGS);
 $contextid = optional_param('context', 0, PARAM_INT);
 $scope = optional_param('scope', course_scope::default_scope(), PARAM_ALPHA);
-if (!course_scope::configured()) {
-    $scope = 'all';
-} else if (!in_array($scope, ['current', 'historical', 'all'], true)) {
+$validscopes = course_scope::valid_scopes();
+if (!in_array($scope, $validscopes, true)) {
     $scope = course_scope::default_scope();
 }
 
@@ -160,6 +159,13 @@ if ($data) {
             $urlparams[$name] = implode(',', $data->{$name});
         }
     }
+    if ($scope === 'videotime') {
+        $videotimeareas = course_scope::videotime_areaids();
+        $data->areaids = empty($data->areaids)
+            ? $videotimeareas
+            : array_values(array_intersect($data->areaids, $videotimeareas));
+        $emptyareas = empty($data->areaids);
+    }
     if ($cat) {
         $categoryareas = array_keys($cat->get_areas());
         $data->areaids = empty($data->areaids) ? $categoryareas : array_values(array_intersect($data->areaids, $categoryareas));
@@ -194,9 +200,9 @@ if ($data) {
 if (!empty($CFG->searchbannerenable) && !empty($CFG->searchbanner)) {
     echo $OUTPUT->notification(format_text($CFG->searchbanner, FORMAT_HTML), 'notifywarning');
 }
-if (course_scope::configured()) {
+if (count($validscopes) > 1) {
     $links = [];
-    foreach (['current', 'historical', 'all'] as $linkscope) {
+    foreach ($validscopes as $linkscope) {
         $selected = $scope === $linkscope;
         $scopeurl = new moodle_url($url, ['scope' => $linkscope, 'page' => 0]);
         $pillclasses = 'search-typesense-nav-pill btn ' . ($selected
