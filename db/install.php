@@ -30,6 +30,13 @@ defined('MOODLE_INTERNAL') || die();
  * @return bool
  */
 function xmldb_search_typesense_install(): bool {
+    if (get_config('search_typesense', 'userprofilefields') === false) {
+        set_config(
+            'userprofilefields',
+            \search_typesense\user_profile_fields::FOLLOW_SHOWUSERIDENTITY,
+            'search_typesense'
+        );
+    }
     try {
         \search_typesense\course_scope::apply_inferred_categories(true);
     } catch (\Throwable $e) {

@@ -50,6 +50,7 @@ class provider implements
             'userid' => 'privacy:metadata:typesense:userid',
             'owneruserid' => 'privacy:metadata:typesense:owneruserid',
             'content' => 'privacy:metadata:typesense:content',
+            'useridentity' => 'privacy:metadata:typesense:useridentity',
         ], 'privacy:metadata:typesense');
         return $collection;
     }

@@ -50,6 +50,16 @@
             <span class="badge search-typesense-area-badge">{{areavisiblename}}</span>
         {{/areavisiblename}}
     </h4>
+    {{#hasuserprofilefields}}
+        <div class="search-typesense-user-meta">
+            {{#userprofilefields}}
+                <span class="search-typesense-user-meta__item">
+                    <span class="search-typesense-user-meta__label">{{label}}:</span>
+                    <span class="search-typesense-user-meta__value">{{value}}</span>
+                </span>
+            {{/userprofilefields}}
+        </div>
+    {{/hasuserprofilefields}}
     {{#content}}
         <div class="result-content">{{{content}}}</div>
     {{/content}}

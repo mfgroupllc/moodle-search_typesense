@@ -60,9 +60,19 @@ class renderer extends \core_search\output\renderer {
         $docdata['showcourselink'] = ($courseurl !== '' && $courseurl !== $docurl);
 
         if ($doc->is_set('areaid')) {
-            $area = \core_search\manager::get_search_area($doc->get('areaid'));
+            $areaid = (string)$doc->get('areaid');
+            $area = \core_search\manager::get_search_area($areaid);
             if ($area) {
                 $docdata['areavisiblename'] = (string)$area->get_visible_name();
+            }
+            if ($areaid === \search_typesense\user_profile_fields::USER_AREA_ID && $doc->is_set('itemid')) {
+                $profilefields = \search_typesense\user_profile_fields::get_visible_fields_for_user(
+                    (int)$doc->get('itemid')
+                );
+                if ($profilefields) {
+                    $docdata['hasuserprofilefields'] = true;
+                    $docdata['userprofilefields'] = $profilefields;
+                }
             }
         }
 

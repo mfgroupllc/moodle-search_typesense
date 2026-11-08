@@ -246,7 +246,7 @@ class candidate_engine extends engine {
         }
         $params = [
             'q' => (string)($filters->q ?? '') !== '' ? (string)$filters->q : '*',
-            'query_by' => 'title,content,description1,description2',
+            'query_by' => $this->get_query_by_fields(),
             'per_page' => static::BATCH_SIZE,
             'filter_by' => implode(' && ', $clauses),
         ];

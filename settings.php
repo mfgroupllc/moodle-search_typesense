@@ -107,5 +107,13 @@ if ($ADMIN->fulltree) {
         during_initial_install() ? [] : \core_course_category::make_categories_list()
     ));
 
+    $settings->add(new admin_setting_configmultiselect(
+        'search_typesense/userprofilefields',
+        get_string('userprofilefields', 'search_typesense'),
+        get_string('userprofilefields_desc', 'search_typesense'),
+        [\search_typesense\user_profile_fields::FOLLOW_SHOWUSERIDENTITY],
+        \search_typesense\user_profile_fields::get_setting_choices()
+    ));
+
     \search_typesense\pro_bridge::extend_settings($settings);
 }

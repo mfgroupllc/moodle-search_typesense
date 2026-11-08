@@ -101,7 +101,7 @@ class client {
     /**
      * Perform a request and decode the JSON response, throwing on error.
      *
-     * @param string $method HTTP method (get/post/delete/put).
+     * @param string $method HTTP method (get/post/delete/put/patch).
      * @param string $path API path (leading slash).
      * @param mixed $body Request body (array is JSON-encoded, string sent raw).
      * @param array $query Query parameters for GET.
@@ -127,6 +127,8 @@ class client {
             $response = $this->curl->post($url, $data, $options);
         } else if ($method === 'put') {
             $response = $this->curl->put($url, $data, $options);
+        } else if ($method === 'patch') {
+            $response = $this->curl->patch($url, $data, $options);
         } else if ($method === 'delete') {
             $response = $this->curl->delete($url, $data, $options);
         } else {
@@ -225,6 +227,32 @@ class client {
      */
     public function delete_collection($name) {
         $this->request('delete', '/collections/' . rawurlencode($name));
+    }
+
+    /**
+     * Retrieve a collection's schema definition.
+     *
+     * @param string $name Collection name.
+     * @return array
+     */
+    public function get_collection(string $name): array {
+        $response = $this->request('get', '/collections/' . rawurlencode($name));
+        $decoded = json_decode($response, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * Update a collection schema (e.g. adding new optional fields).
+     *
+     * @param string $name Collection name.
+     * @param array $fields Field additions/drops.
+     * @return array
+     */
+    public function update_collection(string $name, array $fields): array {
+        $body = ['fields' => $fields];
+        $response = $this->request('patch', '/collections/' . rawurlencode($name), $body);
+        $decoded = json_decode($response, true);
+        return is_array($decoded) ? $decoded : [];
     }
 
     /**

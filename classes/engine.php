@@ -112,8 +112,11 @@ class engine extends \core_search\engine {
      */
     protected function get_schema_fields() {
         $locale = $this->get_engine_config('locale');
-        $textfield = function ($name) use ($locale) {
+        $textfield = function ($name, $optional = false) use ($locale) {
             $field = ['name' => $name, 'type' => 'string'];
+            if ($optional) {
+                $field['optional'] = true;
+            }
             if (!empty($locale)) {
                 $field['locale'] = $locale;
             }
@@ -135,22 +138,67 @@ class engine extends \core_search\engine {
             $textfield('content'),
             $textfield('description1'),
             $textfield('description2'),
+            $textfield('useridentity', true),
             ['name' => 'docdata', 'type' => 'string'],
         ];
         return pro_bridge::extend_schema_fields($fields);
     }
 
     /**
-     * Ensure the collection exists, creating it with our schema if not.
+     * Return the comma-separated list of fields to search for the current viewer.
+     *
+     * @return string
+     */
+    protected function get_query_by_fields(): string {
+        $fields = ['title', 'content', 'description1', 'description2'];
+        $plugin = !empty($this->pluginname) ? $this->pluginname : 'search_typesense';
+        if (user_profile_fields::can_current_user_query_identity($plugin)) {
+            $fields[] = 'useridentity';
+        }
+        return implode(',', $fields);
+    }
+
+    /**
+     * Ensure the collection exists, creating it with our schema if not, and adding any new optional schema fields.
      *
      * @return string collection name
      */
     protected function ensure_collection() {
+        static $verified = [];
         $client = $this->get_client();
         $name = $this->get_collection_name();
-        if (!$client->collection_exists($name)) {
-            $client->create_collection($name, $this->get_schema_fields(), 'modified');
+        if (!empty($verified[$name])) {
+            return $name;
         }
+        $desired = $this->get_schema_fields();
+        if (!$client->collection_exists($name)) {
+            $client->create_collection($name, $desired, 'modified');
+            $verified[$name] = true;
+            return $name;
+        }
+        try {
+            $existing = $client->get_collection($name);
+            $existingnames = [];
+            foreach ($existing['fields'] ?? [] as $field) {
+                if (!empty($field['name'])) {
+                    $existingnames[$field['name']] = true;
+                }
+            }
+            $missing = [];
+            foreach ($desired as $field) {
+                $fname = $field['name'] ?? '';
+                if ($fname !== '' && $fname !== 'id' && empty($existingnames[$fname])) {
+                    $field['optional'] = true;
+                    $missing[] = $field;
+                }
+            }
+            if ($missing) {
+                $client->update_collection($name, $missing);
+            }
+        } catch (\Throwable $e) {
+            debugging('Typesense schema migration check skipped: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
+        $verified[$name] = true;
         return $name;
     }
 
@@ -219,6 +267,13 @@ class engine extends \core_search\engine {
             'description2' => (string)($data['description2'] ?? ''),
             'docdata'      => json_encode($data),
         ];
+        if ((string)$data['areaid'] === user_profile_fields::USER_AREA_ID && !empty($data['itemid'])) {
+            $plugin = !empty($this->pluginname) ? $this->pluginname : 'search_typesense';
+            $identitytext = user_profile_fields::get_indexable_text((int)$data['itemid'], $plugin);
+            if ($identitytext !== '') {
+                $mapped['useridentity'] = $identitytext;
+            }
+        }
         return pro_bridge::extend_mapped_document($mapped, $document);
     }
 
@@ -384,7 +439,7 @@ class engine extends \core_search\engine {
 
         $params = [
             'q'        => $q,
-            'query_by' => 'title,content,description1,description2',
+            'query_by' => $this->get_query_by_fields(),
             'per_page' => (int)$limit,
             'page'     => isset($filters->page) ? max(1, (int)$filters->page) : 1,
         ];

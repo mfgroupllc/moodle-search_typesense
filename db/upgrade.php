@@ -39,5 +39,17 @@ function xmldb_search_typesense_upgrade(int $oldversion): bool {
         }
         upgrade_plugin_savepoint(true, 2026110800, 'search', 'typesense');
     }
+
+    if ($oldversion < 2026110801) {
+        if (get_config('search_typesense', 'userprofilefields') === false) {
+            set_config(
+                'userprofilefields',
+                \search_typesense\user_profile_fields::FOLLOW_SHOWUSERIDENTITY,
+                'search_typesense'
+            );
+        }
+        upgrade_plugin_savepoint(true, 2026110801, 'search', 'typesense');
+    }
+
     return true;
 }
