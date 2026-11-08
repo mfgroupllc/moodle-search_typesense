@@ -85,3 +85,36 @@ It is distributed separately and does not alter the GPL core.
 ## License
 
 GNU GPL v3 or later. See `LICENSE`.
+
+## Optional search page and current-course scopes
+
+The **Search matching courses first** setting routes browser global searches to
+this plugin's search page on Moodle 4.5. The page queries Typesense in batches,
+then uses Moodle's current course and activity permissions for candidate courses.
+This avoids expanding activity visibility for every course a manager can access.
+It does not replace mobile or web-service search. The setting is off by default.
+
+Administrators can select **Current course categories** manually or use the
+**Detect / Re-check active categories** button in plugin settings. On initial
+install or upgrade, if no categories are selected yet, the plugin infers active
+categories automatically using upcoming or recently modified course shells
+(including zero-enrolment courses under development), active course start/end
+dates, recent student enrolments, and recent course access, while excluding
+archive and test-only folders. Selected categories and their active descendants
+define the current scope. The search page then defaults to current courses and
+offers links to historical/other courses and everything. With no categories
+selected, it defaults to everything. Classification uses live Moodle category
+membership, so moving a course does not require reindexing.
+
+“Historical / other” means outside the selected active trees; it does not imply
+a course is closed, and neither scope grants access beyond Moodle's permissions.
+
+Results and counts contain only verified matches. The page requests more
+candidates when access checks reject a match. Very broad searches have a
+processing limit and display a message when additional matches may remain.
+Disabling the setting restores the standard Moodle browser search path.
+
+Before enabling, validate manager/student access, hidden activities, separate
+groups, explicit course/context filters, current/historical scope, and paging.
+The `tests/` directory contains Moodle PHPUnit tests; run them in an isolated
+Moodle test installation, never against a live Moodle database.

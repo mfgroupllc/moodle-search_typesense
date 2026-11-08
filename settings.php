@@ -24,9 +24,7 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-if ($hassiteconfig) {
-    $settings = new admin_settingpage('search_typesense', get_string('pluginname', 'search_typesense'));
-
+if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_configtext(
         'search_typesense/host',
         get_string('host', 'search_typesense'),
@@ -84,5 +82,28 @@ if ($hassiteconfig) {
         PARAM_ALPHANUMEXT
     ));
 
-    $ADMIN->add('search', $settings);
+    $settings->add(new admin_setting_configcheckbox(
+        'search_typesense/candidatefirst',
+        get_string('candidatefirst', 'search_typesense'),
+        get_string('candidatefirst_desc', 'search_typesense'),
+        0
+    ));
+
+    $inferurl = new moodle_url('/search/engine/typesense/infer_categories.php');
+    $inferbutton = html_writer::div(
+        html_writer::link(
+            $inferurl,
+            get_string('infercategories_button', 'search_typesense'),
+            ['class' => 'btn btn-secondary btn-sm mt-2']
+        ),
+        'mb-1'
+    );
+
+    $settings->add(new admin_setting_configmultiselect(
+        'search_typesense/currentcategories',
+        get_string('currentcategories', 'search_typesense'),
+        get_string('currentcategories_desc', 'search_typesense') . $inferbutton,
+        [],
+        during_initial_install() ? [] : \core_course_category::make_categories_list()
+    ));
 }

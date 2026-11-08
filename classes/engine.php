@@ -33,6 +33,11 @@ defined('MOODLE_INTERNAL') || die();
  * Typesense collection and run filtered, ranked queries against it.
  */
 class engine extends \core_search\engine {
+    /** @var string Sort order value for newest modified first. */
+    public const SORT_DATE_DESC = 'datedesc';
+
+    /** @var string Sort order value for oldest modified first. */
+    public const SORT_DATE_ASC = 'dateasc';
 
     /**
      * Total number of results from the most recent query.
@@ -42,14 +47,29 @@ class engine extends \core_search\engine {
     protected $totalresults = null;
 
     /**
+     * Read a configuration setting, respecting alternate engine configuration when active.
+     *
+     * @param string $name Setting name.
+     * @return mixed
+     */
+    protected function get_engine_config(string $name) {
+        $plugin = !empty($this->pluginname) ? $this->pluginname : 'search_typesense';
+        $value = get_config($plugin, $name);
+        if (($value === false || $value === null || $value === '') && $plugin !== 'search_typesense') {
+            $value = get_config('search_typesense', $name);
+        }
+        return $value;
+    }
+
+    /**
      * Whether the plugin is fully configured.
      *
      * @return bool
      */
     public function is_installed() {
-        $host = get_config('search_typesense', 'host');
-        $port = get_config('search_typesense', 'port');
-        $key = get_config('search_typesense', 'apikey');
+        $host = $this->get_engine_config('host');
+        $port = $this->get_engine_config('port');
+        $key = $this->get_engine_config('apikey');
         return !empty($host) && !empty($port) && $key !== null && $key !== '';
     }
 
@@ -64,11 +84,11 @@ class engine extends \core_search\engine {
             throw new \moodle_exception('notconfigured', 'search_typesense');
         }
         return new client(
-            get_config('search_typesense', 'host'),
-            get_config('search_typesense', 'port'),
-            get_config('search_typesense', 'protocol'),
-            get_config('search_typesense', 'apikey'),
-            get_config('search_typesense', 'verifytls') !== '0'
+            $this->get_engine_config('host'),
+            $this->get_engine_config('port'),
+            $this->get_engine_config('protocol'),
+            $this->get_engine_config('apikey'),
+            $this->get_engine_config('verifytls') !== '0'
         );
     }
 
@@ -78,7 +98,7 @@ class engine extends \core_search\engine {
      * @return string
      */
     protected function get_collection_name() {
-        return get_config('search_typesense', 'collection') ?: 'moodle';
+        return $this->get_engine_config('collection') ?: 'moodle';
     }
 
     /**
@@ -91,7 +111,7 @@ class engine extends \core_search\engine {
      * @return array
      */
     protected function get_schema_fields() {
-        $locale = get_config('search_typesense', 'locale');
+        $locale = $this->get_engine_config('locale');
         $textfield = function ($name) use ($locale) {
             $field = ['name' => $name, 'type' => 'string'];
             if (!empty($locale)) {
@@ -356,9 +376,9 @@ class engine extends \core_search\engine {
         }
 
         if (!empty($filters->order)) {
-            if ($filters->order == \core_search\manager::SORT_DATE_DESC) {
+            if ($filters->order === self::SORT_DATE_DESC) {
                 $params['sort_by'] = 'modified:desc';
-            } else if ($filters->order == \core_search\manager::SORT_DATE_ASC) {
+            } else if ($filters->order === self::SORT_DATE_ASC) {
                 $params['sort_by'] = 'modified:asc';
             }
         }
