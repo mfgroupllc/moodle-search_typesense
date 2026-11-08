@@ -367,7 +367,7 @@ class course_scope {
                 $results[$id] = $entry;
             }
         }
-        return $results;
+        return pro_bridge::refine_inferred_categories($results, $now);
     }
 
     /**

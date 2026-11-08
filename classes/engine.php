@@ -137,7 +137,7 @@ class engine extends \core_search\engine {
             $textfield('description2'),
             ['name' => 'docdata', 'type' => 'string'],
         ];
-        return $fields;
+        return pro_bridge::extend_schema_fields($fields);
     }
 
     /**
@@ -203,7 +203,7 @@ class engine extends \core_search\engine {
         $int = function ($value) {
             return (int)$value;
         };
-        return [
+        $mapped = [
             'id'           => (string)$data['id'],
             'areaid'       => (string)$data['areaid'],
             'courseid'     => $int($data['courseid'] ?? 0),
@@ -219,6 +219,66 @@ class engine extends \core_search\engine {
             'description2' => (string)($data['description2'] ?? ''),
             'docdata'      => json_encode($data),
         ];
+        return pro_bridge::extend_mapped_document($mapped, $document);
+    }
+
+    /**
+     * Checks if the search engine supports adding documents in a batch.
+     *
+     * @return bool
+     */
+    public function supports_add_document_batch(): bool {
+        return true;
+    }
+
+    /**
+     * Maximum number of documents to send together in one NDJSON import batch.
+     *
+     * @return int
+     */
+    public function get_batch_max_documents(): int {
+        return 500;
+    }
+
+    /**
+     * Adds a batch of documents to Typesense using the bulk NDJSON import endpoint.
+     *
+     * @param \core_search\document[] $documents Documents to add to the index.
+     * @param bool $fileindexing True if file indexing is enabled.
+     * @return int[] Array of [processed count, failed count, batch count].
+     */
+    public function add_document_batch(array $documents, bool $fileindexing = false): array {
+        if (!$documents) {
+            return [0, 0, 0];
+        }
+        $collection = $this->ensure_collection();
+        $mapped = [];
+        foreach ($documents as $document) {
+            $mapped[] = $this->map_document($document);
+        }
+        try {
+            $results = $this->get_client()->import_documents($collection, $mapped);
+        } catch (\moodle_exception $e) {
+            debugging('Typesense add_document_batch failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            return [0, count($documents), 1];
+        }
+        $processed = 0;
+        $failed = 0;
+        $succeededdocs = [];
+        foreach ($mapped as $index => $payload) {
+            if (!empty($results[$index]['success'])) {
+                $processed++;
+                $succeededdocs[] = $payload;
+            } else {
+                $failed++;
+                $err = $results[$index]['error'] ?? 'Unknown import error';
+                debugging('Typesense import failed for ' . ($payload['id'] ?? $index) . ': ' . $err, DEBUG_DEVELOPER);
+            }
+        }
+        if ($succeededdocs) {
+            pro_bridge::after_documents_indexed($succeededdocs);
+        }
+        return [$processed, $failed, 1];
     }
 
     /**
@@ -233,7 +293,9 @@ class engine extends \core_search\engine {
     public function add_document($document, $fileindexing = false) {
         $collection = $this->ensure_collection();
         try {
-            $this->get_client()->add_document($collection, $this->map_document($document));
+            $mapped = $this->map_document($document);
+            $this->get_client()->add_document($collection, $mapped);
+            pro_bridge::after_documents_indexed([$mapped]);
         } catch (\moodle_exception $e) {
             debugging('Typesense add_document failed for ' . $document->get('id') . ': ' . $e->getMessage(),
                 DEBUG_DEVELOPER);

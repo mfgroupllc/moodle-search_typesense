@@ -255,7 +255,7 @@ class candidate_engine extends engine {
         } else if (($filters->order ?? '') === self::SORT_DATE_ASC) {
             $params['sort_by'] = 'modified:asc';
         }
-        return $params;
+        return pro_bridge::extend_candidate_params($params, $filters, $scope, $areas);
     }
 
     /**

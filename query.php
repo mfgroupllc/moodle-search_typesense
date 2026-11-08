@@ -180,11 +180,15 @@ echo $OUTPUT->header();
 \core\session\manager::write_close();
 
 $results = null;
+$searchelapsed = 0.0;
 if ($data) {
+    $searchstart = microtime(true);
     $candidateengine = new candidate_engine(hook_callbacks::is_alternate_engine());
     $results = $emptyareas ? (object)[
         'results' => [], 'actualpage' => 0, 'totalcount' => 0, 'hasmore' => false, 'limited' => false,
     ] : $candidateengine->search_page($data, $page);
+    $searchelapsed = microtime(true) - $searchstart;
+    \search_typesense\pro_bridge::record_search_telemetry($data, $scope, $results, $searchelapsed);
 }
 
 if (!empty($CFG->searchbannerenable) && !empty($CFG->searchbanner)) {
@@ -224,6 +228,7 @@ if (course_scope::configured()) {
 
 $mform->display();
 if ($results) {
+    echo \search_typesense\pro_bridge::render_search_page_banner($data, $scope, $results, $url);
     if ($results->limited) {
         echo $OUTPUT->notification(get_string('searchlimited', 'search_typesense'), 'notifyinfo');
     } else if (!$results->results && !$results->hasmore) {

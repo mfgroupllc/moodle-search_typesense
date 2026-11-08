@@ -106,4 +106,6 @@ if ($ADMIN->fulltree) {
         [],
         during_initial_install() ? [] : \core_course_category::make_categories_list()
     ));
+
+    \search_typesense\pro_bridge::extend_settings($settings);
 }
