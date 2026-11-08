@@ -67,7 +67,7 @@ if (!hook_callbacks::is_enabled()) {
     redirect($target . ($query !== '' ? '?' . $query : ''));
 }
 
-$searchrenderer = $PAGE->get_renderer('core_search');
+$searchrenderer = $PAGE->get_renderer('search_typesense');
 if (!manager::is_global_search_enabled()) {
     echo $OUTPUT->header();
     echo $searchrenderer->render_search_disabled();

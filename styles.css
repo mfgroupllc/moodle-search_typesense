@@ -1,6 +1,6 @@
 /**
  * File styles.css.
- * Contains Moodle Design System aligned styles for the Typesense search scope pills.
+ * Contains Moodle Design System aligned styles for the Typesense search page.
  */
 
 .search-typesense-scopes {
@@ -25,4 +25,16 @@
 
 .search-typesense-nav-pill__label {
     white-space: nowrap;
+}
+
+.search-typesense-result__title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.search-typesense-area-badge {
+    font-size: 0.75rem;
+    font-weight: 500;
 }
