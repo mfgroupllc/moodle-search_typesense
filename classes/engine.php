@@ -244,9 +244,10 @@ class engine extends \core_search\engine {
      * Convert a Moodle search document into a Typesense document array.
      *
      * @param \core_search\document $document
+     * @param array|null $preloadedidentity Preloaded useridentity map for batch indexing.
      * @return array
      */
-    protected function map_document(\core_search\document $document) {
+    protected function map_document(\core_search\document $document, ?array $preloadedidentity = null) {
         $data = $document->export_for_engine();
         $int = function ($value) {
             return (int)$value;
@@ -268,8 +269,13 @@ class engine extends \core_search\engine {
             'docdata'      => json_encode($data),
         ];
         if ((string)$data['areaid'] === user_profile_fields::USER_AREA_ID && !empty($data['itemid'])) {
-            $plugin = !empty($this->pluginname) ? $this->pluginname : 'search_typesense';
-            $identitytext = user_profile_fields::get_indexable_text((int)$data['itemid'], $plugin);
+            $uid = (int)$data['itemid'];
+            if ($preloadedidentity !== null) {
+                $identitytext = $preloadedidentity[$uid] ?? '';
+            } else {
+                $plugin = !empty($this->pluginname) ? $this->pluginname : 'search_typesense';
+                $identitytext = user_profile_fields::get_indexable_text($uid, $plugin);
+            }
             if ($identitytext !== '') {
                 $mapped['useridentity'] = $identitytext;
             }
@@ -307,9 +313,22 @@ class engine extends \core_search\engine {
             return [0, 0, 0];
         }
         $collection = $this->ensure_collection();
+        $userids = [];
+        foreach ($documents as $document) {
+            if ($document->is_set('areaid') &&
+                    (string)$document->get('areaid') === user_profile_fields::USER_AREA_ID &&
+                    $document->is_set('itemid')) {
+                $userids[] = (int)$document->get('itemid');
+            }
+        }
+        $preloadedidentity = null;
+        if ($userids) {
+            $plugin = !empty($this->pluginname) ? $this->pluginname : 'search_typesense';
+            $preloadedidentity = user_profile_fields::get_indexable_text_batch($userids, $plugin);
+        }
         $mapped = [];
         foreach ($documents as $document) {
-            $mapped[] = $this->map_document($document);
+            $mapped[] = $this->map_document($document, $preloadedidentity);
         }
         try {
             $results = $this->get_client()->import_documents($collection, $mapped);

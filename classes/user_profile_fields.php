@@ -141,6 +141,119 @@ class user_profile_fields {
     }
 
     /**
+     * Preload and build indexable profile text for a batch of user IDs in bulk (max 2 SQL queries).
+     *
+     * @param int[] $userids User IDs in the batch.
+     * @param string $plugin Engine plugin name.
+     * @return array Map of userid => space-separated indexable text.
+     */
+    public static function get_indexable_text_batch(array $userids, string $plugin = 'search_typesense'): array {
+        global $CFG, $DB;
+
+        $userids = array_values(array_unique(array_filter(array_map('intval', $userids), function($id) {
+            return $id > 0;
+        })));
+        if (!$userids) {
+            return [];
+        }
+        $fields = self::get_configured_fields($plugin);
+        if (!$fields) {
+            return [];
+        }
+
+        $standardcols = ['id'];
+        $customshortnames = [];
+        foreach ($fields as $fieldname) {
+            if (strpos($fieldname, self::PROFILE_FIELD_PREFIX) === 0) {
+                $short = substr($fieldname, strlen(self::PROFILE_FIELD_PREFIX));
+                if ($short !== '') {
+                    $customshortnames[\core_text::strtolower($short)] = $short;
+                }
+            } else if (in_array($fieldname, self::STANDARD_FIELDS, true)) {
+                $standardcols[$fieldname] = $fieldname;
+            }
+        }
+
+        [$uinsql, $uparams] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'uid');
+        $uparams['deleted'] = 0;
+        $users = $DB->get_records_select(
+            'user',
+            "id $uinsql AND deleted = :deleted",
+            $uparams,
+            '',
+            implode(',', $standardcols)
+        );
+        if (!$users) {
+            return [];
+        }
+
+        $customdata = [];
+        if ($customshortnames) {
+            require_once($CFG->dirroot . '/user/profile/lib.php');
+            $allcustom = profile_get_custom_fields();
+            $targetfieldids = [];
+            $fielddefs = [];
+            foreach ($allcustom as $fdef) {
+                $lower = \core_text::strtolower((string)$fdef->shortname);
+                if (isset($customshortnames[$lower])) {
+                    $targetfieldids[] = (int)$fdef->id;
+                    $fielddefs[(int)$fdef->id] = $fdef;
+                }
+            }
+            if ($targetfieldids) {
+                [$finsql, $fparams] = $DB->get_in_or_equal($targetfieldids, SQL_PARAMS_NAMED, 'fid');
+                $sql = "SELECT uid.id, uid.userid, uid.fieldid, uid.data
+                          FROM {user_info_data} uid
+                         WHERE uid.userid $uinsql
+                           AND uid.fieldid $finsql";
+                $rows = $DB->get_records_sql($sql, $uparams + $fparams);
+                foreach ($rows as $row) {
+                    $fdef = $fielddefs[(int)$row->fieldid] ?? null;
+                    if (!$fdef) {
+                        continue;
+                    }
+                    $key = \core_text::strtolower(self::PROFILE_FIELD_PREFIX . $fdef->shortname);
+                    $customdata[(int)$row->userid][$key] = trim(content_to_text((string)$row->data, false));
+                }
+            }
+        }
+
+        $countries = in_array('country', $fields, true)
+            ? get_string_manager()->get_list_of_countries()
+            : [];
+
+        $result = [];
+        foreach ($users as $uid => $user) {
+            $uid = (int)$uid;
+            $tokens = [];
+            foreach ($fields as $fieldname) {
+                if (strpos($fieldname, self::PROFILE_FIELD_PREFIX) === 0) {
+                    $lookup = \core_text::strtolower($fieldname);
+                    $val = $customdata[$uid][$lookup] ?? '';
+                    if ($val !== '') {
+                        $tokens[] = $val;
+                    }
+                } else if (in_array($fieldname, self::STANDARD_FIELDS, true)) {
+                    $rawval = trim((string)($user->{$fieldname} ?? ''));
+                    if ($rawval === '') {
+                        continue;
+                    }
+                    if ($fieldname === 'country' && !empty($countries[$rawval])) {
+                        $tokens[] = $rawval . ' ' . $countries[$rawval];
+                    } else {
+                        $tokens[] = $rawval;
+                    }
+                }
+            }
+            if ($tokens) {
+                $result[$uid] = implode(' ', $tokens);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Build the plain-text string of configured profile values for indexing a `core_user-user` document.
      *
      * @param int $userid Target user ID.
@@ -148,67 +261,11 @@ class user_profile_fields {
      * @return string Space-separated searchable values, or empty string if none apply.
      */
     public static function get_indexable_text(int $userid, string $plugin = 'search_typesense'): string {
-        global $CFG, $DB;
-
         if ($userid <= 0) {
             return '';
         }
-        $fields = self::get_configured_fields($plugin);
-        if (!$fields) {
-            return '';
-        }
-
-        $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0]);
-        if (!$user) {
-            return '';
-        }
-
-        $hascustom = false;
-        foreach ($fields as $fieldname) {
-            if (strpos($fieldname, self::PROFILE_FIELD_PREFIX) === 0) {
-                $hascustom = true;
-                break;
-            }
-        }
-
-        $custommap = [];
-        if ($hascustom) {
-            require_once($CFG->dirroot . '/user/profile/lib.php');
-            $custominstances = profile_get_user_fields_with_data($userid);
-            foreach ($custominstances as $instance) {
-                $key = \core_text::strtolower(self::PROFILE_FIELD_PREFIX . $instance->get_shortname());
-                $custommap[$key] = $instance;
-            }
-        }
-
-        $tokens = [];
-        foreach ($fields as $fieldname) {
-            if (strpos($fieldname, self::PROFILE_FIELD_PREFIX) === 0) {
-                $lookup = \core_text::strtolower($fieldname);
-                if (!isset($custommap[$lookup]) || $custommap[$lookup]->is_empty()) {
-                    continue;
-                }
-                $display = trim(content_to_text($custommap[$lookup]->display_data(), false));
-                if ($display !== '') {
-                    $tokens[] = $display;
-                }
-            } else if (in_array($fieldname, self::STANDARD_FIELDS, true)) {
-                $rawval = trim((string)($user->{$fieldname} ?? ''));
-                if ($rawval === '') {
-                    continue;
-                }
-                if ($fieldname === 'country') {
-                    $countries = get_string_manager()->get_list_of_countries();
-                    if (!empty($countries[$rawval])) {
-                        $tokens[] = $rawval . ' ' . $countries[$rawval];
-                        continue;
-                    }
-                }
-                $tokens[] = $rawval;
-            }
-        }
-
-        return implode(' ', $tokens);
+        $batch = self::get_indexable_text_batch([$userid], $plugin);
+        return $batch[$userid] ?? '';
     }
 
     /**
