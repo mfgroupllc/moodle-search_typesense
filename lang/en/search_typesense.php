@@ -25,6 +25,8 @@
 defined('MOODLE_INTERNAL') || die();
 
 $string['pluginname'] = 'Typesense';
+$string['searchinfo'] = 'Search queries';
+$string['searchinfo_help'] = 'Enter keywords to search across titles, content, and descriptions. Typesense matches prefixes, tolerates minor typos, and folds accents automatically. Use the filters below to narrow results by search area, course, or modification date.';
 $string['search_typesense:setting'] = 'Typesense search engine';
 $string['host'] = 'Typesense host';
 $string['host_desc'] = 'Hostname or IP address of the Typesense server (e.g. localhost or search.example.com).';
