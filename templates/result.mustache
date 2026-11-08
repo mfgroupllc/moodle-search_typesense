@@ -82,11 +82,8 @@
         {{#showcourselink}}
             <a href="{{{courseurl}}}">{{#str}}incourse, search, {{{coursefullname}}}{{/str}}</a>
         {{/showcourselink}}
-        {{^showcourselink}}
-            <span>{{#str}}incourse, search, {{{coursefullname}}}{{/str}}</span>
-        {{/showcourselink}}
         {{#userfullname}}
-            &middot; <a href="{{{userurl}}}">{{#str}}byname, moodle, {{{userfullname}}}{{/str}}</a>
+            {{#showcourselink}} &middot; {{/showcourselink}}<a href="{{{userurl}}}">{{#str}}byname, moodle, {{{userfullname}}}{{/str}}</a>
         {{/userfullname}}
     </div>
 </div>
