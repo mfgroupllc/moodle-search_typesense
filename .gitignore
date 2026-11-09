@@ -1,13 +1,4 @@
-# OS / editor noise
+/dist/
 .DS_Store
-*.swp
-.idea/
-.vscode/
-
-# Local Typesense data (dev only)
-ts-data/
-typesense-data/
-
-# Composer / build artifacts (none expected, but be safe)
-/vendor/
-composer.lock
+HANDOFF.md
+continue.md
