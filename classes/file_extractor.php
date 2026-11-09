@@ -27,11 +27,11 @@ namespace search_typesense;
 /**
  * Extracts searchable plain text from attached Moodle files (.pdf, .docx, .pptx, .xlsx, .odt, .txt, .vtt, .html).
  *
- * Uses a zero-Java extraction chain:
+ * Uses a zero-Java local extraction chain:
  * - Office OpenXML (.docx, .pptx, .xlsx) and OpenDocument (.odt, .odp, .ods) via native PHP ZipArchive XML parsing.
  * - Plain text, Markdown, CSV, HTML, and WebVTT/SRT captions in pure PHP.
- * - PDF via optional Apache Tika HTTP endpoint, pdftotext (poppler-utils), Moodle's Ghostscript ($CFG->pathtogs),
- *   or a built-in pure-PHP FlateDecode PDF text stream parser as a universal fallback.
+ * - PDF via pdftotext (poppler-utils), Moodle's Ghostscript ($CFG->pathtogs),
+ *   or a built-in pure-PHP FlateDecode and ToUnicode PDF text stream parser as a universal fallback.
  *
  * @package    search_typesense
  * @copyright  2026 Chris Murad
@@ -397,27 +397,17 @@ class file_extractor {
     }
 
     /**
-     * Extract text from a PDF file using the 4-step extraction chain:
-     * 1. Optional Apache Tika HTTP URL (if configured)
-     * 2. pdftotext CLI (poppler-utils)
-     * 3. Moodle's built-in Ghostscript ($CFG->pathtogs with -sDEVICE=txtwrite)
-     * 4. Built-in pure-PHP FlateDecode PDF stream text parser
+     * Extract text from a PDF file using the 3-step local extraction chain:
+     * 1. pdftotext CLI (poppler-utils)
+     * 2. Moodle's built-in Ghostscript ($CFG->pathtogs with -sDEVICE=txtwrite)
+     * 3. Built-in pure-PHP FlateDecode and ToUnicode PDF stream text parser
      *
      * @param string $filepath Path to PDF file on disk.
      * @param string $plugin Plugin config namespace.
      * @return string
      */
     protected static function extract_pdf(string $filepath, string $plugin = 'search_typesense'): string {
-        // 1. Optional Apache Tika endpoint if configured.
-        $tikaurl = trim((string)get_config($plugin, 'tikaurl'));
-        if ($tikaurl !== '') {
-            $tikatext = self::extract_via_tika($filepath, $tikaurl);
-            if ($tikatext !== '') {
-                return $tikatext;
-            }
-        }
-
-        // 2. pdftotext binary (poppler-utils) if available.
+        // 1. pdftotext binary (poppler-utils) if available.
         $pdftotext = self::resolve_pdftotext_binary($plugin);
         if ($pdftotext !== '') {
             $clitext = self::run_pdftotext($pdftotext, $filepath);
@@ -426,13 +416,13 @@ class file_extractor {
             }
         }
 
-        // 3. Moodle's standard Ghostscript binary ($CFG->pathtogs) with txtwrite device.
+        // 2. Moodle's standard Ghostscript binary ($CFG->pathtogs) with txtwrite device.
         $gstext = self::run_ghostscript_txtwrite($filepath);
         if ($gstext !== '') {
             return $gstext;
         }
 
-        // 4. Universal pure-PHP PDF stream extractor fallback.
+        // 3. Universal pure-PHP PDF stream extractor fallback.
         $raw = (string)@file_get_contents($filepath);
         if ($raw === '') {
             return '';
@@ -519,38 +509,6 @@ class file_extractor {
             return '';
         }
         return trim(implode("\n", $output));
-    }
-
-    /**
-     * Extract text via an optional Apache Tika HTTP endpoint (PUT /tika).
-     *
-     * @param string $filepath Path to file on disk.
-     * @param string $tikaurl Base Tika server URL.
-     * @return string
-     */
-    protected static function extract_via_tika(string $filepath, string $tikaurl): string {
-        $endpoint = rtrim($tikaurl, '/') . '/tika';
-        $curl = new \curl();
-        $curl->setHeader([
-            'Accept: text/plain',
-            'Content-Type: application/pdf',
-        ]);
-        $options = [
-            'CURLOPT_TIMEOUT' => 15,
-            'CURLOPT_CONNECTTIMEOUT' => 5,
-            'CURLOPT_CustomRequest' => 'PUT',
-        ];
-        $raw = (string)@file_get_contents($filepath);
-        if ($raw === '') {
-            return '';
-        }
-        $response = $curl->put($endpoint, $raw, $options);
-        $info = $curl->get_info();
-        $httpcode = (int)($info['http_code'] ?? 0);
-        if ($httpcode >= 200 && $httpcode < 300 && is_string($response)) {
-            return trim($response);
-        }
-        return '';
     }
 
     /**

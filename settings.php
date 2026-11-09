@@ -161,14 +161,6 @@ if ($ADMIN->fulltree) {
         '/usr/bin/pdftotext'
     ));
 
-    $settings->add(new admin_setting_configtext(
-        'search_typesense/tikaurl',
-        new lang_string('tikaurl', 'search_typesense'),
-        new lang_string('tikaurl_desc', 'search_typesense'),
-        '',
-        PARAM_URL
-    ));
-
     // 5. Detected Integrations (Video Time).
     if (!during_initial_install() && \search_typesense\course_scope::videotime_installed()) {
         $vtareas = \search_typesense\course_scope::videotime_areaids();

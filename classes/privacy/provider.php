@@ -49,8 +49,17 @@ class provider implements
         $collection->add_external_location_link('typesense', [
             'userid' => 'privacy:metadata:typesense:userid',
             'owneruserid' => 'privacy:metadata:typesense:owneruserid',
+            'groupid' => 'privacy:metadata:typesense:groupid',
+            'courseid' => 'privacy:metadata:typesense:courseid',
+            'contextid' => 'privacy:metadata:typesense:contextid',
+            'modified' => 'privacy:metadata:typesense:modified',
+            'title' => 'privacy:metadata:typesense:title',
             'content' => 'privacy:metadata:typesense:content',
+            'description1' => 'privacy:metadata:typesense:description1',
+            'description2' => 'privacy:metadata:typesense:description2',
+            'docdata' => 'privacy:metadata:typesense:docdata',
             'useridentity' => 'privacy:metadata:typesense:useridentity',
+            'query' => 'privacy:metadata:typesense:query',
         ], 'privacy:metadata:typesense');
         return $collection;
     }
