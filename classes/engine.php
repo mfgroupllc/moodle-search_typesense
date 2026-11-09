@@ -241,17 +241,39 @@ class engine extends \core_search\engine {
     }
 
     /**
+     * Returns true if attached file indexing is supported and enabled.
+     *
+     * @return bool
+     */
+    public function file_indexing_enabled() {
+        return (bool)($this->get_engine_config('fileindexing') ?? 1);
+    }
+
+    /**
      * Convert a Moodle search document into a Typesense document array.
      *
      * @param \core_search\document $document
      * @param array|null $preloadedidentity Preloaded useridentity map for batch indexing.
+     * @param bool $fileindexing True if attached file text should be extracted and indexed.
      * @return array
      */
-    protected function map_document(\core_search\document $document, ?array $preloadedidentity = null) {
+    protected function map_document(
+        \core_search\document $document,
+        ?array $preloadedidentity = null,
+        bool $fileindexing = false
+    ) {
         $data = $document->export_for_engine();
         $int = function ($value) {
             return (int)$value;
         };
+        $content = (string)($data['content'] ?? '');
+        $plugin = !empty($this->pluginname) ? $this->pluginname : 'search_typesense';
+        if (($fileindexing || $this->file_indexing_enabled()) && !empty($document->get_files())) {
+            $filetext = file_extractor::extract_files_text($document, $plugin);
+            if ($filetext !== '') {
+                $content = trim($content . "\n" . $filetext);
+            }
+        }
         $mapped = [
             'id'           => (string)$data['id'],
             'areaid'       => (string)$data['areaid'],
@@ -263,7 +285,7 @@ class engine extends \core_search\engine {
             'type'         => $int($data['type'] ?? 1),
             'modified'     => $int($data['modified'] ?? 0),
             'title'        => (string)($data['title'] ?? ''),
-            'content'      => (string)($data['content'] ?? ''),
+            'content'      => $content,
             'description1' => (string)($data['description1'] ?? ''),
             'description2' => (string)($data['description2'] ?? ''),
             'docdata'      => json_encode($data),
@@ -273,7 +295,6 @@ class engine extends \core_search\engine {
             if ($preloadedidentity !== null) {
                 $identitytext = $preloadedidentity[$uid] ?? '';
             } else {
-                $plugin = !empty($this->pluginname) ? $this->pluginname : 'search_typesense';
                 $identitytext = user_profile_fields::get_indexable_text($uid, $plugin);
             }
             if ($identitytext !== '') {
@@ -328,7 +349,7 @@ class engine extends \core_search\engine {
         }
         $mapped = [];
         foreach ($documents as $document) {
-            $mapped[] = $this->map_document($document, $preloadedidentity);
+            $mapped[] = $this->map_document($document, $preloadedidentity, $fileindexing);
         }
         try {
             $results = $this->get_client()->import_documents($collection, $mapped);
@@ -367,7 +388,7 @@ class engine extends \core_search\engine {
     public function add_document($document, $fileindexing = false) {
         $collection = $this->ensure_collection();
         try {
-            $mapped = $this->map_document($document);
+            $mapped = $this->map_document($document, null, (bool)$fileindexing);
             $this->get_client()->add_document($collection, $mapped);
             pro_bridge::after_documents_indexed([$mapped]);
         } catch (\moodle_exception $e) {
