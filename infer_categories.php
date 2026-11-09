@@ -100,6 +100,16 @@ if (!$inferred) {
         if ($metrics) {
             $signaltext .= ' ' . html_writer::tag('span', '(' . s(implode('; ', $metrics)) . ')', ['class' => 'text-muted small']);
         }
+        if (!empty($cat->aibadge)) {
+            $signaltext .= ' ' . html_writer::tag(
+                'span',
+                s((string)$cat->aibadge),
+                ['class' => 'badge badge-info bg-info text-dark ms-1 ml-1']
+            );
+        }
+        if (!empty($cat->airationale)) {
+            $signaltext .= html_writer::div(s((string)$cat->airationale), 'text-muted small mt-1');
+        }
         $courseinfo = (string)$cat->subtreecoursecount;
         if (!empty($cat->rolledup)) {
             $courseinfo .= ' ' . html_writer::tag(
