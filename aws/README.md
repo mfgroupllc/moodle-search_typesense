@@ -1,67 +1,52 @@
-# Deploy Typesense on AWS (CloudFormation)
+# Deploy Typesense on AWS in 3 Minutes (CloudFormation)
 
-A single-instance Typesense server for the `search_typesense` Moodle plugin,
-deployed into an existing VPC/subnet. Typesense runs as a native binary under systemd — no Docker, no
-container registry dependency.
+Unlike Apache Solr — which requires a Java/JVM runtime, heap tuning, ZooKeeper/schema XML files, and compiling the `solr` PECL C-extension into PHP-FPM on every Moodle web server — **Typesense runs as a single lightweight C++ binary** and Moodle talks to it over standard HTTPS using built-in `curl`.
 
-## What it creates
+This repository includes a production-ready skeleton CloudFormation template ([`aws/typesense.yaml`](./typesense.yaml)) that deploys a hardened single-node Typesense server into your existing AWS VPC in under 3 minutes.
 
-- One EC2 instance (Amazon Linux 2023) running `typesense-server`.
-- A security group that opens **8108 only to the Moodle security group**.
-- An IAM instance profile for **SSM Session Manager** access (no SSH key needed).
-- Data lives on the instance root volume (`/data`).
+## What `aws/typesense.yaml` Creates
 
-## Prerequisites
+- **Amazon Linux 2023 EC2 Instance (`t3.small` default):** Resolves the latest AL2023 AMI automatically in any AWS region via SSM Parameter Store, with IMDSv2 required and an encrypted `gp3` root volume (`/data`).
+- **Single Native Binary Under `systemd`:** Downloads `typesense-server`, generates a 10-year self-signed TLS certificate with your instance's private IP in the Subject Alternative Name (SAN), and starts `typesense.service` automatically. No Docker or JVM dependencies.
+- **Least-Privilege VPC Security Group:** Opens TCP port `8108` **exclusively** to your Moodle web server security group (`MoodleSecurityGroupId`).
+- **SSM Session Manager Access:** Automatically creates an IAM Instance Profile with `AmazonSSMManagedInstanceCore` (or reuses an existing profile if your AWS account enforces IAM guardrails) so no SSH keys or bastion hosts are needed.
 
-- The target subnet must have **internet egress** so the instance can download
-  the Typesense binary from `dl.typesense.org` (and, if `TypesenseVersion=latest`,
-  query `api.github.com`).
-- You need the **Moodle web server security group id** so only Moodle can reach 8108.
-
-## Deploy
+## Deploy with 1 Command
 
 ```bash
 aws cloudformation deploy \
   --template-file aws/typesense.yaml \
-  --stack-name moodle-typesense-stage \
+  --stack-name moodle-typesense \
   --capabilities CAPABILITY_IAM \
   --parameter-overrides \
     VpcId=vpc-xxxxxxxx \
     SubnetId=subnet-xxxxxxxx \
     MoodleSecurityGroupId=sg-xxxxxxxx \
-    TypesenseApiKey='a-strong-secret-key' \
+    TypesenseApiKey='replace-with-a-strong-random-api-key' \
     TypesenseVersion=27.1
 ```
 
-Use `TypesenseVersion=latest` to grab the newest release at deploy time (pin it
-for production).
+*(If your AWS account restricts IAM role creation via CloudFormation guardrails, pass `InstanceProfileName=YourExistingSSMProfile` and omit `--capabilities CAPABILITY_IAM`.)*
 
-## After deployment
+## Connect Moodle (`search_typesense`)
 
-1. Read the outputs:
+1. Fetch the stack outputs:
    ```bash
-   aws cloudformation describe-stacks --stack-name moodle-typesense-stage \
+   aws cloudformation describe-stacks \
+     --stack-name moodle-typesense \
      --query "Stacks[0].Outputs"
    ```
-   The `TypesenseEndpoint` output is what Moodle needs, e.g. `http://10.0.x.x:8108`.
-2. In Moodle, set the **Typesense** search engine and configure:
-   - **Host:** the private IP from the output
-   - **Port:** `8108`
-   - **Protocol:** `http` (in-VPC; add an ALB + ACM for TLS later if required)
-   - **API key:** the same value passed to `TypesenseApiKey`
-3. Run the global search index.
+2. In Moodle, navigate to **Site administration -> Plugins -> Search -> Typesense** and enter:
+   - **Typesense URL:** `https://<TypesensePrivateIp>:8108` (or copy `TypesenseEndpoint` from the stack output)
+   - **API Key:** The secret passed to `TypesenseApiKey`
+3. Build the initial index:
+   ```bash
+   php admin/cli/search.php --index --force
+   ```
 
-## Access the box
+## Inspect Logs via AWS Session Manager
 
 ```bash
 aws ssm start-session --target <TypesenseInstanceId>
-journalctl -u typesense -f   # watch the server log
+sudo journalctl -u typesense -f
 ```
-
-## Notes / next steps
-
-- For production, attach a **dedicated EBS** (vs. the root volume) and/or move to
-  a multi-node Typesense cluster with a load balancer.
-- Add **TLS** via an ALB + ACM if Moodle will call Typesense across a public/VPN boundary.
-- The `latest` version resolution requires GitHub API access from the instance at
-  deploy time; pin a version to avoid surprises.
