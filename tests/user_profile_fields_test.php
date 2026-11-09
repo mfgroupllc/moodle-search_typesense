@@ -98,13 +98,13 @@ final class user_profile_fields_test extends \advanced_testcase {
 
         $target = $generator->create_user([
             'firstname' => 'Alice',
-            'lastname' => 'Baker',
-            'idnumber' => 'ESC-99421',
-            'email' => 'alice.baker@example.edu',
-            'department' => 'Pastry Arts',
+            'lastname' => 'Carter',
+            'idnumber' => 'STU-99421',
+            'email' => 'alice.carter@example.edu',
+            'department' => 'Computer Science',
             'maildisplay' => \core_user::MAILDISPLAY_HIDE,
             'profile_field_cohortcode' => '2605-ONL',
-            'profile_field_campus' => 'Boulder',
+            'profile_field_campus' => 'North Campus',
         ]);
         $peerstudent = $generator->create_user();
         $teacher = $generator->create_user();
@@ -124,11 +124,11 @@ final class user_profile_fields_test extends \advanced_testcase {
 
         // Indexable text contains configured values for Typesense useridentity field.
         $indexable = user_profile_fields::get_indexable_text($target->id);
-        $this->assertStringContainsString('ESC-99421', $indexable);
-        $this->assertStringContainsString('alice.baker@example.edu', $indexable);
-        $this->assertStringContainsString('Pastry Arts', $indexable);
+        $this->assertStringContainsString('STU-99421', $indexable);
+        $this->assertStringContainsString('alice.carter@example.edu', $indexable);
+        $this->assertStringContainsString('Computer Science', $indexable);
         $this->assertStringContainsString('2605-ONL', $indexable);
-        $this->assertStringContainsString('Boulder', $indexable);
+        $this->assertStringContainsString('North Campus', $indexable);
 
         // 1. Peer student: cannot query useridentity and only sees public PROFILE_VISIBLE_ALL custom field ('campus').
         $this->setUser($peerstudent);

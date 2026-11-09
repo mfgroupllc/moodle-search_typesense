@@ -1,12 +1,12 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   Deploy a single Typesense search server for the Moodle search_typesense plugin.
-  Targets an existing VPC/subnet (e.g. the Escoffier moodle-stage environment) and
+  Targets an existing VPC/subnet and
   exposes port 8108 only to the Moodle security group. No SSH key required
   (access via SSM Session Manager). Typesense runs as a native binary under systemd
   (no Docker), so there is no container runtime or image-pull dependency.
 
-  Hardening mirrors the Escoffier training-moodle83 stack (IMDSv2, encrypted EBS,
+  Uses standard AWS security hardening (IMDSv2, encrypted EBS,
   reused SSMinstanceRole) to satisfy account CloudFormation guardrails.
 
 Parameters:
@@ -30,7 +30,7 @@ Parameters:
   AMIId:
     Type: AWS::EC2::Image::Id
     Default: ami-052b3645c2c811821
-    Description: Amazon Linux 2023 AMI (us-east-2), same as the training-moodle83 host.
+    Description: Amazon Linux 2023 AMI (us-east-2).
 
   InstanceType:
     Type: String

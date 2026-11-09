@@ -1,8 +1,7 @@
 # Deploy Typesense on AWS (CloudFormation)
 
 A single-instance Typesense server for the `search_typesense` Moodle plugin,
-deployed into an existing VPC/subnet (e.g. the **Escoffier `moodle-stage`**
-environment). Typesense runs as a native binary under systemd — no Docker, no
+deployed into an existing VPC/subnet. Typesense runs as a native binary under systemd — no Docker, no
 container registry dependency.
 
 ## What it creates

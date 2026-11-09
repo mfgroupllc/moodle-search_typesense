@@ -1,4 +1,5 @@
 /.gitattributes export-ignore
 /.gitignore export-ignore
 /.github export-ignore
+/aws export-ignore
 /dist export-ignore
