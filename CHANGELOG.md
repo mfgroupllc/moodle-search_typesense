@@ -4,6 +4,15 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.2] - 2026-11-09 (`2026110902`)
+
+### Added & Hardened
+- **Privacy API Completeness & 100% Local Attached-Document Extraction (`\search_typesense\privacy\provider`, `\search_typesense\file_extractor`):**
+  - Declared all indexed Typesense document fields (`userid`, `owneruserid`, `groupid`, `courseid`, `contextid`, `modified`, `title`, `content`, `description1`, `description2`, `docdata`, `useridentity`) and search queries (`query`) in `\search_typesense\privacy\provider::get_metadata()`, including explicit disclosure of locally extracted attached file text (`search_typesense/fileindexing`, up to 60,000 characters per document).
+  - Removed the optional external `tikaurl` HTTP endpoint from `file_extractor` and `settings.php` so attached document extraction runs 100% locally on the Moodle server (`ZipArchive` XML, `pdftotext`, `$CFG->pathtogs` Ghostscript, and native PHP PDF stream parsing).
+
+---
+
 ## [1.1.1] - 2026-11-09 (`2026110901`)
 
 ### Added
@@ -17,12 +26,9 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
 - **Zero-Result Sticky Category Fallback (`query.php`):**
   - Automatically falls back to `core-all` when a new search submitted from a specific category tab (such as `Users`) returns 0 results in that category but matches records across all areas.
 
-### Fixed & Hardened
+### Fixed
 - **Manager Memory Exhaustion & Multi-Batch Timeout Fix (`\search_typesense\access_manager`):**
   - Scoped `access_manager::eligible_courses(true)` to evaluate `can_access_course()` strictly on candidate course batches instead of calling `parent::get_my_courses(true)` across all site courses, eliminating `128MB` memory exhaustion for system-level Managers and 10-second multi-batch timeouts.
-- **Privacy API Completeness & 100% Local Attached-Document Extraction (`\search_typesense\privacy\provider`, `\search_typesense\file_extractor`):**
-  - Declared all indexed Typesense document fields (`userid`, `owneruserid`, `groupid`, `courseid`, `contextid`, `modified`, `title`, `content`, `description1`, `description2`, `docdata`, `useridentity`) and search queries (`query`) in `\search_typesense\privacy\provider::get_metadata()`, including explicit disclosure of locally extracted attached file text (`search_typesense/fileindexing`, up to 60,000 characters per document).
-  - Removed the optional external `tikaurl` HTTP endpoint from `file_extractor` and `settings.php` so attached document extraction runs 100% locally on the Moodle server (`ZipArchive` XML, `pdftotext`, `$CFG->pathtogs` Ghostscript, and native PHP PDF stream parsing).
 
 ---
 
