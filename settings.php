@@ -125,6 +125,13 @@ if ($ADMIN->fulltree) {
         new lang_string('settings_display_heading_desc', 'search_typesense')
     ));
 
+    $settings->add(new admin_setting_configcheckbox(
+        'search_typesense/restrictusersearch',
+        new lang_string('restrictusersearch', 'search_typesense'),
+        new lang_string('restrictusersearch_desc', 'search_typesense'),
+        1
+    ));
+
     $settings->add(new admin_setting_configmultiselect(
         'search_typesense/userprofilefields',
         new lang_string('userprofilefields', 'search_typesense'),

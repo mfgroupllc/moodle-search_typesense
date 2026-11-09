@@ -90,7 +90,13 @@ $customdata['orderoptions'] = $engine->get_supported_orders($context);
 $cat = null;
 if (manager::is_search_area_categories_enabled()) {
     $cat = manager::get_search_area_category_by_name(optional_param('cat', '', PARAM_NOTAGS));
-    $customdata['cat'] = $cat->get_name();
+    if ($cat && $cat->get_name() === 'core-users' &&
+            !\search_typesense\user_profile_fields::can_current_user_search_users()) {
+        $cat = manager::get_search_area_category_by_name(manager::SEARCH_AREA_CATEGORY_ALL);
+    }
+    if ($cat) {
+        $customdata['cat'] = $cat->get_name();
+    }
 }
 
 // Keep scope in the form action so POSTs retain it without modifying Moodle's form.
@@ -151,11 +157,17 @@ if ($data) {
             : array_values(array_intersect($data->areaids, $videotimeareas));
         $emptyareas = empty($data->areaids);
     }
+    $requestedareaids = !empty($data->areaids) ? (array)$data->areaids : [];
     if ($cat) {
-        $categoryareas = array_keys($cat->get_areas());
+        $categoryareas = \search_typesense\user_profile_fields::filter_allowed_areas(
+            array_keys($cat->get_areas())
+        );
         $data->areaids = empty($data->areaids) ? $categoryareas : array_values(array_intersect($data->areaids, $categoryareas));
         $emptyareas = empty($data->areaids);
         $data->cat = $cat->get_name();
+    } else if (!empty($data->areaids)) {
+        $data->areaids = \search_typesense\user_profile_fields::filter_allowed_areas((array)$data->areaids);
+        $emptyareas = empty($data->areaids);
     }
     $data->context = $context;
     $data->scope = $scope;
@@ -178,6 +190,24 @@ if ($data) {
     $results = $emptyareas ? (object)[
         'results' => [], 'actualpage' => 0, 'totalcount' => 0, 'hasmore' => false, 'limited' => false,
     ] : $candidateengine->search_page($data, $page);
+    if (empty($results->results) && $page === 0 && $scope !== 'videotime' && empty($requestedareaids) &&
+            $cat && $cat->get_name() !== manager::SEARCH_AREA_CATEGORY_ALL) {
+        $allcat = manager::get_search_area_category_by_name(manager::SEARCH_AREA_CATEGORY_ALL);
+        if ($allcat) {
+            $fallbackdata = clone $data;
+            $fallbackdata->areaids = \search_typesense\user_profile_fields::filter_allowed_areas(
+                array_keys($allcat->get_areas())
+            );
+            $fallbackdata->cat = $allcat->get_name();
+            $fallbackresults = $candidateengine->search_page($fallbackdata, 0);
+            if (!empty($fallbackresults->results)) {
+                $results = $fallbackresults;
+                $cat = $allcat;
+                $data = $fallbackdata;
+                $url->param('cat', $allcat->get_name());
+            }
+        }
+    }
     $searchelapsed = microtime(true) - $searchstart;
     \search_typesense\pro_bridge::record_search_telemetry($data, $scope, $results, $searchelapsed);
 }

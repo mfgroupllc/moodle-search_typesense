@@ -113,7 +113,11 @@ class engine extends \core_search\engine {
     protected function get_schema_fields() {
         $locale = $this->get_engine_config('locale');
         $textfield = function ($name, $optional = false) use ($locale) {
-            $field = ['name' => $name, 'type' => 'string'];
+            $field = [
+                'name' => $name,
+                'type' => 'string',
+                'token_separators' => ['_', '-', '/', '.'],
+            ];
             if ($optional) {
                 $field['optional'] = true;
             }
@@ -274,6 +278,15 @@ class engine extends \core_search\engine {
                 $content = trim($content . "\n" . $filetext);
             }
         }
+        $title = (string)($data['title'] ?? '');
+        $desc1 = (string)($data['description1'] ?? '');
+        $desc2 = (string)($data['description2'] ?? '');
+        if (strpbrk($title . $desc1, '_-/') !== false) {
+            $expanded = trim((string)preg_replace('/[_\/-]+/', ' ', $title . ' ' . $desc1));
+            if ($expanded !== '') {
+                $desc2 = trim($desc2 . ' ' . $expanded);
+            }
+        }
         $mapped = [
             'id'           => (string)$data['id'],
             'areaid'       => (string)$data['areaid'],
@@ -284,10 +297,10 @@ class engine extends \core_search\engine {
             'groupid'      => $int($data['groupid'] ?? 0),
             'type'         => $int($data['type'] ?? 1),
             'modified'     => $int($data['modified'] ?? 0),
-            'title'        => (string)($data['title'] ?? ''),
+            'title'        => $title,
             'content'      => $content,
-            'description1' => (string)($data['description1'] ?? ''),
-            'description2' => (string)($data['description2'] ?? ''),
+            'description1' => $desc1,
+            'description2' => $desc2,
             'docdata'      => json_encode($data),
         ];
         if ((string)$data['areaid'] === user_profile_fields::USER_AREA_ID && !empty($data['itemid'])) {

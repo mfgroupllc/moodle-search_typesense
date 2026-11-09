@@ -92,9 +92,19 @@ class candidate_engine extends engine {
         $prefixlimit = min($maxresults, ($page + 1) * $perpage);
         $target = min($maxresults, $prefixlimit + 1);
         $this->accessmanager = $this->accessmanager ?? new access_manager($this);
-        $scope = $this->accessmanager->scope_courseids($filters);
-        $enabled = array_keys(\core_search\manager::get_search_areas_list(true));
+        $enabled = user_profile_fields::filter_allowed_areas(
+            array_keys(\core_search\manager::get_search_areas_list(true))
+        );
         $areas = !empty($filters->areaids) ? array_values(array_intersect($enabled, (array)$filters->areaids)) : $enabled;
+        $initialscope = $this->accessmanager->scope_courseids($filters);
+        if ($areas === ['core_course-course'] && ($filters->scope ?? '') === 'current' &&
+                $this->accessmanager->explicit_courseids($filters) === null) {
+            // When explicitly searching the Courses tab, include courses and templates across all categories.
+            $filters = clone $filters;
+            $filters->scopecourseids = null;
+            $filters->scope = 'all';
+        }
+        $scope = $this->accessmanager->scope_courseids($filters);
         if ($scope === [] || !$areas) {
             return $this->page_result([], 0, false, false);
         }
@@ -108,6 +118,13 @@ class candidate_engine extends engine {
         $backendpage = 1;
         $exhausted = false;
         $limited = false;
+
+        $isrelevancesort = empty($filters->order) || $filters->order === 'relevance';
+        if ($page === 0 && $isrelevancesort && in_array('core_course-course', $areas, true) &&
+                trim((string)($filters->q ?? '')) !== '' && trim((string)$filters->q) !== '*') {
+            $maxpriority = ($areas === ['core_course-course']) ? $target : min(5, $target);
+            $documents = $this->prepend_priority_courses($filters, $initialscope, $seen, $started, $maxpriority);
+        }
 
         while (count($documents) < $target && $scanned < static::MAX_CANDIDATES) {
             if (microtime(true) - $started >= static::TIME_BUDGET) {
@@ -244,8 +261,10 @@ class candidate_engine extends engine {
         if (!empty($filters->timeend)) {
             $clauses[] = 'modified:<=' . (int)$filters->timeend;
         }
+        $rawq = (string)($filters->q ?? '');
+        $normq = trim((string)preg_replace('/_+/', ' ', $rawq));
         $params = [
-            'q' => (string)($filters->q ?? '') !== '' ? (string)$filters->q : '*',
+            'q' => $normq !== '' ? $normq : ($rawq !== '' ? $rawq : '*'),
             'query_by' => $this->get_query_by_fields(),
             'per_page' => static::BATCH_SIZE,
             'filter_by' => implode(' && ', $clauses),
@@ -256,6 +275,130 @@ class candidate_engine extends engine {
             $params['sort_by'] = 'modified:asc';
         }
         return pro_bridge::extend_candidate_params($params, $filters, $scope, $areas);
+    }
+
+    /**
+     * Surface matching courses and templates to the top of Page 1 across categories.
+     *
+     * @param \stdClass $filters Search filters.
+     * @param array|null $currentscope Initial category scope course IDs.
+     * @param array $seen Reference to seen document IDs map.
+     * @param float $started Request start microtime.
+     * @param int $maxlimit Maximum priority course documents to return.
+     * @return \core_search\document[]
+     */
+    protected function prepend_priority_courses(
+        \stdClass $filters,
+        ?array $currentscope,
+        array &$seen,
+        float $started,
+        int $maxlimit
+    ): array {
+        global $USER;
+        if ($maxlimit <= 0 || microtime(true) - $started >= static::TIME_BUDGET) {
+            return [];
+        }
+        $area = $this->get_search_area('core_course-course');
+        if (!$area) {
+            return [];
+        }
+        $explicitscope = $this->accessmanager->explicit_courseids($filters);
+        $coursescope = $explicitscope;
+        if ($explicitscope === null && ($filters->scope ?? '') === 'historical') {
+            $coursescope = $currentscope;
+        }
+        $clauses = [
+            'areaid:[`core_course-course`]',
+            '(owneruserid:0 || owneruserid:' . (int)$USER->id . ')',
+        ];
+        if ($coursescope !== null) {
+            if ($coursescope === []) {
+                return [];
+            }
+            $clauses[] = 'courseid:[' . implode(',', $coursescope) . ']';
+        }
+        if (!empty($filters->timestart)) {
+            $clauses[] = 'modified:>=' . (int)$filters->timestart;
+        }
+        if (!empty($filters->timeend)) {
+            $clauses[] = 'modified:<=' . (int)$filters->timeend;
+        }
+        $rawq = (string)($filters->q ?? '');
+        $normq = trim((string)preg_replace('/_+/', ' ', $rawq));
+        $params = [
+            'q' => $normq !== '' ? $normq : $rawq,
+            'query_by' => 'title,description1,description2',
+            'per_page' => 25,
+            'page' => 1,
+            'prefix' => 'true',
+            'exclude_fields' => 'embedding',
+            'filter_by' => implode(' && ', $clauses),
+        ];
+        try {
+            $response = $this->get_client()->search($this->get_collection_name(), $params);
+        } catch (\Throwable $e) {
+            return [];
+        }
+        if (empty($response['hits']) || !is_array($response['hits'])) {
+            return [];
+        }
+
+        $coursefilters = clone $filters;
+        if ($explicitscope === null && ($filters->scope ?? '') !== 'historical') {
+            $coursefilters->scopecourseids = null;
+            $coursefilters->scope = 'all';
+        }
+        $currentlookup = is_array($currentscope) ? array_fill_keys($currentscope, true) : [];
+        $tier0 = [];
+        $tier1 = [];
+        $courseids = [];
+        foreach ($response['hits'] as $hit) {
+            $data = $this->candidate_data($hit);
+            if ($data === null || isset($seen[$data['id']])) {
+                continue;
+            }
+            if (!$this->matches_filters($data, $coursefilters, $coursescope, ['core_course-course'])) {
+                continue;
+            }
+            $cid = (int)$data['courseid'];
+            $courseids[$cid] = $cid;
+            $haystack = ($data['title'] ?? '') . ' ' . ($data['description1'] ?? '');
+            $ispriority = isset($currentlookup[$cid]) ||
+                preg_match('/(?:^|[\s_\-])(template|primary|master)(?:$|[\s_\-])/i', $haystack);
+            if ($ispriority) {
+                $tier0[] = $data;
+            } else {
+                $tier1[] = $data;
+            }
+        }
+        $ordered = array_merge($tier0, $tier1);
+        if (!$ordered) {
+            return [];
+        }
+
+        $access = $this->accessmanager->candidate_access(array_values($courseids), $coursefilters);
+        $documents = [];
+        foreach ($ordered as $data) {
+            if (microtime(true) - $started >= static::TIME_BUDGET) {
+                break;
+            }
+            if (!$this->context_allows($data, $access)) {
+                continue;
+            }
+            try {
+                $itemaccess = $area->check_access($data['itemid']);
+                if ($itemaccess === \core_search\manager::ACCESS_GRANTED) {
+                    $seen[$data['id']] = true;
+                    $documents[] = $this->to_document($area, $data);
+                }
+            } catch (\dml_exception $e) {
+                continue;
+            }
+            if (count($documents) >= $maxlimit) {
+                break;
+            }
+        }
+        return $documents;
     }
 
     /**

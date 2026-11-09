@@ -216,6 +216,7 @@ class client {
             'name' => $name,
             'fields' => $fields,
             'default_sorting_field' => $defaultsortingfield,
+            'token_separators' => ['_', '-', '/', '.'],
         ];
         return json_decode($this->request('post', '/collections', $body), true);
     }
@@ -273,14 +274,15 @@ class client {
     }
 
     /**
-     * Bulk import documents (upsert). Returns per-line results.
+     * Bulk import documents (upsert/update). Returns per-line results.
      *
      * @param string $collection
      * @param array $documents
+     * @param string $action Import action ('upsert', 'update', 'create').
      * @return array
      */
-    public function import_documents($collection, array $documents) {
-        $path = '/collections/' . rawurlencode($collection) . '/documents/import?action=upsert';
+    public function import_documents($collection, array $documents, string $action = 'upsert') {
+        $path = '/collections/' . rawurlencode($collection) . '/documents/import?action=' . rawurlencode($action);
         $ndjson = '';
         foreach ($documents as $doc) {
             $ndjson .= json_encode($doc) . "\n";

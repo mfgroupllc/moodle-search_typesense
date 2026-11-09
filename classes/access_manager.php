@@ -134,20 +134,41 @@ class access_manager extends \core_search\manager {
         $missing = array_diff($courseids, array_keys($cached['courses']));
         if ($missing || !$cached['initialised']) {
             $this->candidatecourses = array_fill_keys($missing, true);
-            // Pass only explicit course filters to parent so system/user contexts and
-            // site-admin behaviour match core while get_my_courses() limits course expansion.
-            $info = parent::get_areas_user_accesses($explicit ?? false, $contextids ?: false);
-            $cached['info']->everything = !empty($info->everything);
-            if (empty($info->everything)) {
-                foreach ($info->usercontexts as $areaid => $contexts) {
-                    $cached['info']->usercontexts[$areaid] = ($cached['info']->usercontexts[$areaid] ?? []) + $contexts;
+            $allaccessible = (bool)get_config('core', 'searchallavailablecourses');
+            $needsparent = !$cached['initialised'] || is_siteadmin() || self::include_all_courses() ||
+                !empty($this->get_my_courses($allaccessible));
+            if ($needsparent) {
+                // Pass only explicit course filters to parent so system/user contexts and
+                // site-admin behaviour match core while get_my_courses() limits course expansion.
+                $info = parent::get_areas_user_accesses($explicit ?? false, $contextids ?: false);
+                $cached['info']->everything = !empty($info->everything);
+                if (empty($info->everything)) {
+                    foreach ($info->usercontexts as $areaid => $contexts) {
+                        $cached['info']->usercontexts[$areaid] = ($cached['info']->usercontexts[$areaid] ?? []) + $contexts;
+                    }
+                    foreach (['separategroupscontexts', 'usergroups'] as $field) {
+                        $cached['info']->{$field} += $info->{$field};
+                    }
+                    foreach ($info->visiblegroupscontextsareas as $contextid => $areas) {
+                        $cached['info']->visiblegroupscontextsareas[$contextid] =
+                            ($cached['info']->visiblegroupscontextsareas[$contextid] ?? []) + $areas;
+                    }
                 }
-                foreach (['separategroupscontexts', 'usergroups'] as $field) {
-                    $cached['info']->{$field} += $info->{$field};
-                }
-                foreach ($info->visiblegroupscontextsareas as $contextid => $areas) {
-                    $cached['info']->visiblegroupscontextsareas[$contextid] =
-                        ($cached['info']->visiblegroupscontextsareas[$contextid] ?? []) + $areas;
+            }
+            // Ensure candidate course records (core_course-course) are searchable whenever the user can
+            // view course info, even if global searchincludeallcourses is disabled to preserve /course/search.php.
+            if ($missing && empty($cached['info']->everything) && empty($filters->mycoursesonly)) {
+                $this->candidatecourses = array_fill_keys($missing, true);
+                $candidatecourserecs = $this->get_all_courses($explicit ?? false);
+                foreach ($candidatecourserecs as $course) {
+                    $coursecontext = \context_course::instance($course->id, IGNORE_MISSING);
+                    if (!$coursecontext || ($contextids && !in_array((int)$coursecontext->id, $contextids, true))) {
+                        continue;
+                    }
+                    if (\core_course_category::can_view_course_info($course)) {
+                        $cid = (int)$coursecontext->id;
+                        $cached['info']->usercontexts['core_course-course'][$cid] = $cid;
+                    }
                 }
             }
             $cached['courses'] += array_fill_keys($missing, true);
@@ -157,17 +178,31 @@ class access_manager extends \core_search\manager {
     }
 
     /**
-     * Read core course eligibility once per flag, without caching permission decisions across requests.
+     * Read enrolled course eligibility once, without loading all site courses into memory.
      *
      * @param bool $allaccessible Whether accessible unenrolled courses are included.
      * @return array
      */
     private function eligible_courses(bool $allaccessible): array {
-        $key = (int)$allaccessible;
-        if (!array_key_exists($key, $this->eligiblecourses)) {
-            $this->eligiblecourses[$key] = parent::get_my_courses($allaccessible);
+        if (!array_key_exists(0, $this->eligiblecourses)) {
+            $this->eligiblecourses[0] = parent::get_my_courses(false);
         }
-        return $this->eligiblecourses[$key];
+        if (!$allaccessible) {
+            return $this->eligiblecourses[0];
+        }
+        if (!array_key_exists(1, $this->eligiblecourses)) {
+            $this->eligiblecourses[1] = $this->eligiblecourses[0];
+        }
+        $unchecked = array_keys(array_diff_key($this->candidatecourses, $this->eligiblecourses[1]));
+        if ($unchecked) {
+            $records = parent::get_all_courses($unchecked);
+            foreach ($records as $cid => $course) {
+                if (is_siteadmin() || can_access_course($course, null, '', true)) {
+                    $this->eligiblecourses[1][$cid] = $course;
+                }
+            }
+        }
+        return $this->eligiblecourses[1];
     }
 
     /**

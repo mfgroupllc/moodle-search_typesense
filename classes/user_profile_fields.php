@@ -291,6 +291,49 @@ class user_profile_fields {
     }
 
     /**
+     * Whether the current viewer is permitted to search the `core_user-user` directory area.
+     *
+     * When `search_typesense/restrictusersearch` is enabled, only staff/faculty holding
+     * `moodle/site:viewuseridentity`, `moodle/user:viewalldetails`, or `moodle/user:viewhiddendetails`
+     * at the system, category, or course level can search for user profiles.
+     *
+     * @param string $plugin Engine plugin name.
+     * @return bool
+     */
+    public static function can_current_user_search_users(string $plugin = 'search_typesense'): bool {
+        $restricted = get_config($plugin, 'restrictusersearch');
+        if (($restricted === false || $restricted === null) && $plugin !== 'search_typesense') {
+            $restricted = get_config('search_typesense', 'restrictusersearch');
+        }
+        if (empty($restricted)) {
+            return true;
+        }
+        $sysctx = \context_system::instance();
+        if (has_capability('moodle/site:viewuseridentity', $sysctx) ||
+                has_capability('moodle/user:viewalldetails', $sysctx) ||
+                has_capability('moodle/user:viewhiddendetails', $sysctx)) {
+            return true;
+        }
+        return self::has_identity_capability_in_any_context();
+    }
+
+    /**
+     * Filter an array of search area IDs, removing `core_user-user` when restricted for the current viewer.
+     *
+     * @param string[] $areaids Search area IDs.
+     * @param string $plugin Engine plugin name.
+     * @return string[]
+     */
+    public static function filter_allowed_areas(array $areaids, string $plugin = 'search_typesense'): array {
+        if (self::can_current_user_search_users($plugin)) {
+            return array_values($areaids);
+        }
+        return array_values(array_filter($areaids, function (string $areaid): bool {
+            return $areaid !== self::USER_AREA_ID;
+        }));
+    }
+
+    /**
      * Resolve the list of profile field badges that the current viewer is permitted to see for a user result.
      *
      * Every configured field is checked against Moodle's role and capability structure for the
@@ -498,8 +541,10 @@ class user_profile_fields {
      * @return bool
      */
     private static function has_shared_course_capability(int $targetuserid, string $capability): bool {
+        global $USER;
         static $cache = [];
-        $key = $targetuserid . ':' . $capability;
+        $viewerid = (int)($USER->id ?? 0);
+        $key = $viewerid . ':' . $targetuserid . ':' . $capability;
         if (array_key_exists($key, $cache)) {
             return $cache[$key];
         }
@@ -519,30 +564,47 @@ class user_profile_fields {
     }
 
     /**
-     * Check whether the current viewer holds `moodle/site:viewuseridentity` in any enrolled course.
+     * Check whether the current viewer holds `moodle/site:viewuseridentity` in any enrolled or assigned context.
      *
      * @return bool
      */
     private static function has_identity_capability_in_any_context(): bool {
         global $USER;
-        static $cached = null;
-        if ($cached !== null) {
-            return $cached;
+        static $cached = [];
+        $uid = (int)($USER->id ?? 0);
+        if (array_key_exists($uid, $cached)) {
+            return $cached[$uid];
         }
-        if (empty($USER->id) || isguestuser()) {
-            $cached = false;
+        if ($uid <= 0 || isguestuser()) {
+            $cached[$uid] = false;
             return false;
         }
-        $courses = enrol_get_users_courses((int)$USER->id, true);
+        $courses = enrol_get_users_courses($uid, true);
         foreach ($courses as $course) {
             \context_helper::preload_from_record($course);
             $coursecontext = \context_course::instance($course->id, IGNORE_MISSING);
-            if ($coursecontext && has_capability('moodle/site:viewuseridentity', $coursecontext)) {
-                $cached = true;
+            if ($coursecontext && (has_capability('moodle/site:viewuseridentity', $coursecontext) ||
+                    has_capability('moodle/user:viewalldetails', $coursecontext) ||
+                    has_capability('moodle/user:viewhiddendetails', $coursecontext))) {
+                $cached[$uid] = true;
                 return true;
             }
         }
-        $cached = false;
+        $accessdata = get_user_accessdata($uid);
+        foreach (array_keys($accessdata['ra'] ?? []) as $contextpath) {
+            $ctxid = (int)preg_replace('~^.*/~', '', (string)$contextpath);
+            if ($ctxid <= 0) {
+                continue;
+            }
+            $ctx = \context::instance_by_id($ctxid, IGNORE_MISSING);
+            if ($ctx && (has_capability('moodle/site:viewuseridentity', $ctx) ||
+                    has_capability('moodle/user:viewalldetails', $ctx) ||
+                    has_capability('moodle/user:viewhiddendetails', $ctx))) {
+                $cached[$uid] = true;
+                return true;
+            }
+        }
+        $cached[$uid] = false;
         return false;
     }
 }
