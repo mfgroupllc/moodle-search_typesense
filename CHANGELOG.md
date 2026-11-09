@@ -4,6 +4,25 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.1] - 2026-11-09 (`2026110901`)
+
+### Added
+- **Course & Template Priority Top-Surfacing (`\search_typesense\candidate_engine::prepend_priority_courses`):**
+  - Automatically surfaces accessible matching courses and course templates (`core_course-course`) to the top of Page 1 across categories.
+  - Enabled `core_course-course` search visibility via `\core_course_category::can_view_course_info($course)` even when Moodle's global `$CFG->searchincludeallcourses` is disabled.
+- **Course Code `_` & `-` Tokenization (`\search_typesense\engine`, `\search_typesense\client`):**
+  - Added `'token_separators' => ['_', '-', '/', '.']` to the Typesense schema and expanded underscore/hyphen-delimited course titles and shortnames (`PA105-O`, `_points`, `Template_V2_Points`) into `description2`.
+- **Role-Based User Search Restriction (`\search_typesense\user_profile_fields::can_current_user_search_users`):**
+  - Added `search_typesense/restrictusersearch` setting (enabled by default) restricting `core_user-user` search and hiding the `Users` tab from students who do not hold `moodle/site:viewuseridentity`, `moodle/user:viewalldetails`, or `moodle/user:viewhiddendetails`.
+- **Zero-Result Sticky Category Fallback (`query.php`):**
+  - Automatically falls back to `core-all` when a new search submitted from a specific category tab (such as `Users`) returns 0 results in that category but matches records across all areas.
+
+### Fixed
+- **Manager Memory Exhaustion & Multi-Batch Timeout Fix (`\search_typesense\access_manager`):**
+  - Scoped `access_manager::eligible_courses(true)` to evaluate `can_access_course()` strictly on candidate course batches instead of calling `parent::get_my_courses(true)` across all site courses, eliminating `128MB` memory exhaustion for system-level Managers and 10-second multi-batch timeouts.
+
+---
+
 ## [1.1.0] - 2026-11-09 (`2026110900`)
 
 ### Added
@@ -16,14 +35,7 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
     2. `pdftotext` CLI (`poppler-utils`) via `search_typesense/pathtopdftotext` (`admin_setting_configexecutable`) or auto-discovered alongside Moodle's `$CFG->pathtopdftoppm`.
     3. Moodle's configured Ghostscript path (`$CFG->pathtogs`) using `-sDEVICE=txtwrite`.
     4. Built-in pure-PHP PDF stream and `ToUnicode` CMap parser (`file_extractor::extract_pdf_text_native()`) that decompresses `FlateDecode` streams and decodes both literal `(...) Tj/TJ` and CID `<hex> Tj/TJ` text operators with zero external binaries required.
-- **Admin Settings (`settings.php`):** Added *Attached document & file content indexing* section (`fileindexing`, `pathtopdftotext`, `tikaurl`) and *Restrict user search to staff & faculty* (`restrictusersearch`).
-- **Course & Template Top-Surfacing, `_`/`-` Tokenization & Manager Memory Fix (`\search_typesense\candidate_engine`, `\search_typesense\access_manager`, `\search_typesense\engine`):**
-  - Added `'token_separators' => ['_', '-', '/', '.']` to the Typesense schema and expanded underscore/hyphen-delimited course titles and shortnames (`PA105-O`, `_points`, `Template_V2_Points`) into `description2`.
-  - Automatically surfaces accessible matching courses and templates (`core_course-course`) to the top of Page 1 across categories (`prepend_priority_courses()`).
-  - Enabled `core_course-course` search visibility via `\core_course_category::can_view_course_info($course)` even when Moodle's global `$CFG->searchincludeallcourses` is disabled.
-  - Scoped `access_manager::eligible_courses(true)` to evaluate `can_access_course()` strictly on candidate course batches instead of calling `parent::get_my_courses(true)` across all site courses, eliminating `128MB` memory exhaustion for system-level Managers and 10-second multi-batch timeouts.
-- **Role-Based User Search Restriction (`\search_typesense\user_profile_fields::can_current_user_search_users`):**
-  - Added `search_typesense/restrictusersearch` (enabled by default) restricting `core_user-user` search and hiding the `Users` tab from students who do not hold `moodle/site:viewuseridentity`, `moodle/user:viewalldetails`, or `moodle/user:viewhiddendetails`.
+- **Admin Settings (`settings.php`):** Added *Attached document & file content indexing* section (`fileindexing`, `pathtopdftotext`, `tikaurl`).
 - **PHPUnit Tests (`tests/file_extractor_test.php`):** Added unit tests covering `.docx`, `.pptx` (slides + speaker notes), `.vtt` captions, `FlateDecode` PDF streams, and `ToUnicode` CMap hex PDF streams.
 
 ---
