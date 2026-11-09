@@ -51,19 +51,8 @@ if (!empty($CFG->forcelogin)) {
 require_capability('moodle/search:query', $systemcontext);
 
 if (!hook_callbacks::is_enabled()) {
-    $target = (new moodle_url('/search/index.php'))->out(false);
-    $fallbackparams = $_GET;
-    foreach (['q', 'title', 'areaids', 'courseids', 'contextids', 'userids', 'groupids',
-              'timestart', 'timeend', 'mycoursesonly', 'order', 'context', 'searchwithin', 'cat', 'page'] as $paramname) {
-        if (!isset($fallbackparams[$paramname]) && isset($_POST[$paramname])) {
-            $fallbackparams[$paramname] = is_array($_POST[$paramname])
-                ? implode(',', $_POST[$paramname])
-                : $_POST[$paramname];
-        }
-    }
-    unset($fallbackparams['scope']);
-    $query = http_build_query($fallbackparams, '', '&', PHP_QUERY_RFC3986);
-    redirect($target . ($query !== '' ? '?' . $query : ''));
+    $target = new moodle_url('/search/index.php', hook_callbacks::clean_search_params());
+    redirect($target);
 }
 
 $searchrenderer = $PAGE->get_renderer('search_typesense');
@@ -109,12 +98,8 @@ $formurl = new moodle_url('/search/engine/typesense/query.php', ['scope' => $sco
 $mform = new \core_search\output\form\search($formurl, $customdata);
 $data = $mform->get_data();
 
-// Both core's comma-separated URL filters and array form filters are accepted.
+// Read comma-separated URL filters when not submitted via mform.
 $readids = static function(string $name, string $type): array {
-    $raw = $_POST[$name] ?? $_GET[$name] ?? '';
-    if (is_array($raw)) {
-        return array_values(optional_param_array($name, [], $type));
-    }
     $value = optional_param($name, '', PARAM_RAW);
     return $value === '' ? [] : array_values(clean_param_array(explode(',', $value), $type));
 };

@@ -65,6 +65,53 @@ class hook_callbacks {
     }
 
     /**
+     * Extract sanitised search query parameters using Moodle parameter helpers.
+     *
+     * @return array<string, scalar>
+     */
+    public static function clean_search_params(): array {
+        $definitions = [
+            'q' => PARAM_NOTAGS,
+            'title' => PARAM_NOTAGS,
+            'areaids' => PARAM_RAW,
+            'courseids' => PARAM_RAW,
+            'contextids' => PARAM_RAW,
+            'userids' => PARAM_RAW,
+            'groupids' => PARAM_RAW,
+            'timestart' => PARAM_INT,
+            'timeend' => PARAM_INT,
+            'mycoursesonly' => PARAM_INT,
+            'order' => PARAM_ALPHANUMEXT,
+            'context' => PARAM_INT,
+            'searchwithin' => PARAM_ALPHA,
+            'cat' => PARAM_NOTAGS,
+            'page' => PARAM_INT,
+        ];
+        $params = [];
+        foreach ($definitions as $name => $type) {
+            if (in_array($name, ['areaids', 'courseids', 'contextids', 'userids', 'groupids'], true)) {
+                $itemtype = ($name === 'areaids') ? PARAM_ALPHANUMEXT : PARAM_INT;
+                $raw = optional_param($name, '', PARAM_RAW);
+                if ($raw !== '') {
+                    $cleaned = array_filter(clean_param_array(explode(',', (string)$raw), $itemtype), static function($v) {
+                        return $v !== '' && $v !== 0;
+                    });
+                    if ($cleaned) {
+                        $params[$name] = implode(',', $cleaned);
+                    }
+                }
+                continue;
+            }
+            $default = ($type === PARAM_INT) ? 0 : '';
+            $val = optional_param($name, $default, $type);
+            if ($val !== $default) {
+                $params[$name] = $val;
+            }
+        }
+        return $params;
+    }
+
+    /**
      * Redirect standard browser GET searches before core builds all access contexts.
      *
      * POST requests stay with core so an existing core form submission is never lost.
@@ -80,18 +127,12 @@ class hook_callbacks {
                 || during_initial_install() || isset($CFG->upgraderunning)) {
             return;
         }
-        if ($SCRIPT !== '/search/index.php' || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET'
+        if ($SCRIPT !== '/search/index.php' || data_submitted()
                 || !self::is_enabled()) {
             return;
         }
 
-        // The destination is fixed on this Moodle site. Encode parameters instead of
-        // appending an untrusted request URI, preserving array filters and query text.
-        $target = (new \moodle_url('/search/engine/typesense/query.php'))->out(false);
-        $query = http_build_query($_GET, '', '&', PHP_QUERY_RFC3986);
-        if ($query !== '') {
-            $target .= '?' . $query;
-        }
+        $target = new \moodle_url('/search/engine/typesense/query.php', self::clean_search_params());
         redirect($target);
     }
 }
