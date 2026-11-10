@@ -61,6 +61,7 @@ $inferred = course_scope::infer_current_categories();
 $currentroots = array_fill_keys(course_scope::roots(), true);
 
 echo $OUTPUT->header();
+echo \search_typesense\admin_nav::render('infer');
 echo $OUTPUT->heading(get_string('infercategories', 'search_typesense'));
 echo html_writer::tag('p', get_string('infercategories_explain', 'search_typesense'), ['class' => 'text-muted mb-3']);
 echo \search_typesense\pro_bridge::render_infer_page_banner($inferred);

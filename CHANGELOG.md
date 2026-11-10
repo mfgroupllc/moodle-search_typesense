@@ -4,6 +4,19 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.3] - 2026-11-10 (`2026111000`)
+
+### Added & Fixed
+- **Fast Bulk NDJSON Search Area Re-indexer (`reindex_areas.php`, `\search_typesense\engine::fast_reindex_area`):**
+  - Added a dedicated **Typesense Fast Area Re-index (NDJSON)** administration page (`/search/engine/typesense/reindex_areas.php`) showing live per-area document counts in Typesense and 1-click **Fast Re-index Now (NDJSON)** and **Queue for Next CLI / Cron** actions that bypass Moodle core's slow context-by-context `{search_index_requests}` queue.
+  - Added automatic detection and 1-click repair (`\context_helper::build_all_paths(false)`) for unbuilt/orphaned `{context}` rows (`path IS NULL OR depth = 0`) that otherwise cause Moodle core's `searchreindex.php` to fail with `moodle_database::get_in_or_equal() does not accept empty arrays`.
+- **Indexer Memory Exhaustion Fix (`\search_typesense\engine::index_starting`, `area_index_starting`, `area_index_complete`, `add_document_batch`):**
+  - Automatically raises PHP memory limit via `raise_memory_limit(MEMORY_HUGE)` (2GB) prior to opening search area recordsets (`get_recordset_by_timestamp`), clears per-area `activitiesdata` and static `get_fast_modinfo(0, 0, true)` caches between batches/areas, and adjusts batch size to 250 documents when attached file indexing is active.
+- **Modular Admin Sub-Pages & Shared Navigation Tabs (`\search_typesense\admin_nav`, `settings.php`):**
+  - Split administration settings into clean sub-pages under **Site administration $\rightarrow$ Plugins $\rightarrow$ Search** (`Connection & Scopes`, `Content, Users & Integrations`, `Fast Area Re-index (NDJSON)`, and `Active Categories`) with a unified Bootstrap tab bar.
+
+---
+
 ## [1.1.2] - 2026-11-09 (`2026110902`)
 
 ### Added & Hardened

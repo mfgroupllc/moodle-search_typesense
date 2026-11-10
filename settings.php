@@ -15,7 +15,10 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
- * Typesense search engine settings.
+ * Typesense search engine settings and administration sub-pages.
+ *
+ * Splits configuration into focused sub-pages under Site administration -> Plugins -> Search
+ * with a shared top navigation bar (\search_typesense\admin_nav).
  *
  * @package    search_typesense
  * @copyright  2026 Christopher Murad <chrismurad@mfgrpllc.com>
@@ -25,11 +28,12 @@
 defined('MOODLE_INTERNAL') || die();
 
 if ($ADMIN->fulltree) {
-    // 1. Server Connection & Index Schema.
+    // 1. Sub-page 1 (Main): Server Connection & Course Scopes.
+    $connnav = during_initial_install() ? '' : \search_typesense\admin_nav::render('connection');
     $settings->add(new admin_setting_heading(
         'search_typesense/heading_connection',
         new lang_string('settings_connection_heading', 'search_typesense'),
-        new lang_string('settings_connection_heading_desc', 'search_typesense')
+        $connnav . get_string('settings_connection_heading_desc', 'search_typesense')
     ));
 
     $settings->add(new admin_setting_configtext(
@@ -86,11 +90,31 @@ if ($ADMIN->fulltree) {
         PARAM_ALPHANUMEXT
     ));
 
-    // 2. Search Performance & Course Scopes.
+    // 2. Search Performance, Course Scopes & Fast Re-index Launcher.
+    $reindexurl = new moodle_url('/search/engine/typesense/reindex_areas.php');
+    $inferurl = new moodle_url('/search/engine/typesense/infer_categories.php');
+    $contentsettingsurl = new moodle_url('/admin/settings.php', ['section' => 'searchtypesense_content']);
+    $scopetoolbtns = html_writer::div(
+        html_writer::link(
+            $reindexurl,
+            get_string('reindexareas_button', 'search_typesense'),
+            ['class' => 'btn btn-outline-primary btn-sm mt-2 mr-2 me-2']
+        ) . html_writer::link(
+            $inferurl,
+            get_string('infercategories_button', 'search_typesense'),
+            ['class' => 'btn btn-outline-secondary btn-sm mt-2 mr-2 me-2']
+        ) . html_writer::link(
+            $contentsettingsurl,
+            get_string('nav_content', 'search_typesense'),
+            ['class' => 'btn btn-outline-secondary btn-sm mt-2']
+        ),
+        'mb-1'
+    );
+
     $settings->add(new admin_setting_heading(
         'search_typesense/heading_scopes',
         new lang_string('settings_scopes_heading', 'search_typesense'),
-        new lang_string('settings_scopes_heading_desc', 'search_typesense')
+        get_string('settings_scopes_heading_desc', 'search_typesense') . $scopetoolbtns
     ));
 
     $settings->add(new admin_setting_configcheckbox(
@@ -100,7 +124,6 @@ if ($ADMIN->fulltree) {
         0
     ));
 
-    $inferurl = new moodle_url('/search/engine/typesense/infer_categories.php');
     $inferbutton = html_writer::div(
         html_writer::link(
             $inferurl,
@@ -118,83 +141,117 @@ if ($ADMIN->fulltree) {
         during_initial_install() ? [] : \core_course_category::make_categories_list()
     ));
 
-    // 3. Result Display & User Identity.
-    $settings->add(new admin_setting_heading(
-        'search_typesense/heading_display',
-        new lang_string('settings_display_heading', 'search_typesense'),
-        new lang_string('settings_display_heading_desc', 'search_typesense')
-    ));
+    // Allow Typesense Pro to render a compact status card & link to its dedicated settings page.
+    \search_typesense\pro_bridge::extend_settings($settings);
+}
 
-    $settings->add(new admin_setting_configcheckbox(
-        'search_typesense/restrictusersearch',
-        new lang_string('restrictusersearch', 'search_typesense'),
-        new lang_string('restrictusersearch_desc', 'search_typesense'),
-        1
-    ));
-
-    $settings->add(new admin_setting_configmultiselect(
-        'search_typesense/userprofilefields',
-        new lang_string('userprofilefields', 'search_typesense'),
-        new lang_string('userprofilefields_desc', 'search_typesense'),
-        [\search_typesense\user_profile_fields::FOLLOW_SHOWUSERIDENTITY],
-        \search_typesense\user_profile_fields::get_setting_choices()
-    ));
-
-    // 4. Attached Document & File Content Indexing.
-    $settings->add(new admin_setting_heading(
-        'search_typesense/heading_fileindexing',
-        new lang_string('settings_fileindexing_heading', 'search_typesense'),
-        new lang_string('settings_fileindexing_heading_desc', 'search_typesense')
-    ));
-
-    $settings->add(new admin_setting_configcheckbox(
-        'search_typesense/fileindexing',
-        new lang_string('fileindexing', 'search_typesense'),
-        new lang_string('fileindexing_desc', 'search_typesense'),
-        1
-    ));
-
-    $settings->add(new admin_setting_configexecutable(
-        'search_typesense/pathtopdftotext',
-        new lang_string('pathtopdftotext', 'search_typesense'),
-        new lang_string('pathtopdftotext_desc', 'search_typesense'),
-        '/usr/bin/pdftotext'
-    ));
-
-    // 5. Detected Integrations (Video Time).
-    if (!during_initial_install() && \search_typesense\course_scope::videotime_installed()) {
-        $vtareas = \search_typesense\course_scope::videotime_areaids();
-        $vtstatusbadge = html_writer::tag(
-            'span',
-            get_string('videotime_detected_badge', 'search_typesense', count($vtareas)),
-            ['class' => 'badge bg-success text-white badge-success me-2 mr-2']
-        );
-        $vtheadingdesc = html_writer::div(
-            $vtstatusbadge . get_string('settings_videotime_heading_desc', 'search_typesense'),
-            'mb-2'
+// Register focused sub-pages under Site administration -> Plugins -> Search.
+if (isset($ADMIN) && $ADMIN->locate('searchplugins')) {
+    if (!$ADMIN->locate('searchtypesense_content')) {
+        $contentsettings = new admin_settingpage(
+            'searchtypesense_content',
+            new lang_string('settings_content_page', 'search_typesense'),
+            'moodle/site:config'
         );
 
-        $settings->add(new admin_setting_heading(
-            'search_typesense/heading_videotime',
-            new lang_string('settings_videotime_heading', 'search_typesense'),
-            $vtheadingdesc
-        ));
+        if ($ADMIN->fulltree) {
+            $contentnav = during_initial_install() ? '' : \search_typesense\admin_nav::render('content');
+            $contentsettings->add(new admin_setting_heading(
+                'search_typesense/heading_display',
+                new lang_string('settings_display_heading', 'search_typesense'),
+                $contentnav . get_string('settings_display_heading_desc', 'search_typesense')
+            ));
 
-        $settings->add(new admin_setting_configcheckbox(
-            'search_typesense/enablevideotimetab',
-            new lang_string('enablevideotimetab', 'search_typesense'),
-            new lang_string('enablevideotimetab_desc', 'search_typesense'),
-            1
-        ));
+            $contentsettings->add(new admin_setting_configcheckbox(
+                'search_typesense/restrictusersearch',
+                new lang_string('restrictusersearch', 'search_typesense'),
+                new lang_string('restrictusersearch_desc', 'search_typesense'),
+                1
+            ));
 
-        $settings->add(new admin_setting_configtext(
-            'search_typesense/videotimetablabel',
-            new lang_string('videotimetablabel', 'search_typesense'),
-            new lang_string('videotimetablabel_desc', 'search_typesense'),
-            get_string('scopevideotime', 'search_typesense'),
-            PARAM_TEXT
+            $contentsettings->add(new admin_setting_configmultiselect(
+                'search_typesense/userprofilefields',
+                new lang_string('userprofilefields', 'search_typesense'),
+                new lang_string('userprofilefields_desc', 'search_typesense'),
+                [\search_typesense\user_profile_fields::FOLLOW_SHOWUSERIDENTITY],
+                \search_typesense\user_profile_fields::get_setting_choices()
+            ));
+
+            // Attached Document & File Content Indexing.
+            $contentsettings->add(new admin_setting_heading(
+                'search_typesense/heading_fileindexing',
+                new lang_string('settings_fileindexing_heading', 'search_typesense'),
+                new lang_string('settings_fileindexing_heading_desc', 'search_typesense')
+            ));
+
+            $contentsettings->add(new admin_setting_configcheckbox(
+                'search_typesense/fileindexing',
+                new lang_string('fileindexing', 'search_typesense'),
+                new lang_string('fileindexing_desc', 'search_typesense'),
+                1
+            ));
+
+            $contentsettings->add(new admin_setting_configexecutable(
+                'search_typesense/pathtopdftotext',
+                new lang_string('pathtopdftotext', 'search_typesense'),
+                new lang_string('pathtopdftotext_desc', 'search_typesense'),
+                '/usr/bin/pdftotext'
+            ));
+
+            // Detected Integrations (Video Time).
+            if (!during_initial_install() && \search_typesense\course_scope::videotime_installed()) {
+                $vtareas = \search_typesense\course_scope::videotime_areaids();
+                $vtstatusbadge = html_writer::tag(
+                    'span',
+                    get_string('videotime_detected_badge', 'search_typesense', count($vtareas)),
+                    ['class' => 'badge bg-success text-white badge-success me-2 mr-2']
+                );
+                $vtheadingdesc = html_writer::div(
+                    $vtstatusbadge . get_string('settings_videotime_heading_desc', 'search_typesense'),
+                    'mb-2'
+                );
+
+                $contentsettings->add(new admin_setting_heading(
+                    'search_typesense/heading_videotime',
+                    new lang_string('settings_videotime_heading', 'search_typesense'),
+                    $vtheadingdesc
+                ));
+
+                $contentsettings->add(new admin_setting_configcheckbox(
+                    'search_typesense/enablevideotimetab',
+                    new lang_string('enablevideotimetab', 'search_typesense'),
+                    new lang_string('enablevideotimetab_desc', 'search_typesense'),
+                    1
+                ));
+
+                $contentsettings->add(new admin_setting_configtext(
+                    'search_typesense/videotimetablabel',
+                    new lang_string('videotimetablabel', 'search_typesense'),
+                    new lang_string('videotimetablabel_desc', 'search_typesense'),
+                    get_string('scopevideotime', 'search_typesense'),
+                    PARAM_TEXT
+                ));
+            }
+        }
+
+        $ADMIN->add('searchplugins', $contentsettings);
+    }
+
+    if (!$ADMIN->locate('searchtypesense_reindex')) {
+        $ADMIN->add('searchplugins', new admin_externalpage(
+            'searchtypesense_reindex',
+            new lang_string('reindexareas_nav', 'search_typesense'),
+            new moodle_url('/search/engine/typesense/reindex_areas.php'),
+            'moodle/site:config'
         ));
     }
 
-    \search_typesense\pro_bridge::extend_settings($settings);
+    if (!$ADMIN->locate('searchtypesense_infer')) {
+        $ADMIN->add('searchplugins', new admin_externalpage(
+            'searchtypesense_infer',
+            new lang_string('infercategories_nav', 'search_typesense'),
+            new moodle_url('/search/engine/typesense/infer_categories.php'),
+            'moodle/site:config'
+        ));
+    }
 }

@@ -329,10 +329,71 @@ class engine extends \core_search\engine {
     /**
      * Maximum number of documents to send together in one NDJSON import batch.
      *
+     * Uses a 250-document batch size when file indexing is enabled so extracted
+     * PDF/Office buffers stay well within memory limits on large activity tables.
+     *
      * @return int
      */
     public function get_batch_max_documents(): int {
-        return 500;
+        return $this->file_indexing_enabled() ? 250 : 500;
+    }
+
+    /**
+     * Run pre-indexing preparation, raising memory limits and repairing unbuilt context paths.
+     *
+     * @param bool $fullindex True if a full index will be performed.
+     * @return void
+     */
+    public function index_starting($fullindex = false) {
+        global $DB;
+        raise_memory_limit(MEMORY_HUGE);
+        try {
+            if ($DB->record_exists_select('context', 'path IS NULL OR depth = 0')) {
+                \context_helper::build_all_paths(false);
+            }
+        } catch (\Throwable $e) {
+            debugging('Context path check skipped: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
+    }
+
+    /**
+     * Prepare memory and clear static course modinfo caches before indexing a search area.
+     *
+     * Invoked by \core_search\manager::index() prior to opening the area's DB recordset,
+     * preventing 256MB memory exhaustion on large tables such as {assign}.
+     *
+     * @param \core_search\base $searcharea The search area starting indexing.
+     * @param bool $fullindex True if a full index is being performed.
+     * @return void
+     */
+    public function area_index_starting($searcharea, $fullindex = false) {
+        raise_memory_limit(MEMORY_HUGE);
+        if ($searcharea instanceof \core_search\base_activity) {
+            $searcharea->activitiesdata = [];
+        }
+        get_fast_modinfo(0, 0, true);
+        if (function_exists('gc_collect_cycles')) {
+            gc_collect_cycles();
+        }
+    }
+
+    /**
+     * Release per-area caches and collect cyclic references after an area completes indexing.
+     *
+     * @param \core_search\base $searcharea The search area that completed.
+     * @param int $numdocs The number of documents added.
+     * @param bool $fullindex True if a full index is being performed.
+     * @return bool
+     */
+    public function area_index_complete($searcharea, $numdocs = 0, $fullindex = false) {
+        if ($searcharea instanceof \core_search\base_activity) {
+            $searcharea->activitiesdata = [];
+        }
+        get_fast_modinfo(0, 0, true);
+        if (function_exists('gc_collect_cycles')) {
+            gc_collect_cycles();
+        }
+        return true;
     }
 
     /**
@@ -346,12 +407,15 @@ class engine extends \core_search\engine {
         if (!$documents) {
             return [0, 0, 0];
         }
+        raise_memory_limit(MEMORY_HUGE);
         $collection = $this->ensure_collection();
         $userids = [];
         foreach ($documents as $document) {
-            if ($document->is_set('areaid') &&
+            if (
+                $document->is_set('areaid') &&
                     (string)$document->get('areaid') === user_profile_fields::USER_AREA_ID &&
-                    $document->is_set('itemid')) {
+                    $document->is_set('itemid')
+            ) {
                 $userids[] = (int)$document->get('itemid');
             }
         }
@@ -368,6 +432,7 @@ class engine extends \core_search\engine {
             $results = $this->get_client()->import_documents($collection, $mapped);
         } catch (\moodle_exception $e) {
             debugging('Typesense add_document_batch failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            get_fast_modinfo(0, 0, true);
             return [0, count($documents), 1];
         }
         $processed = 0;
@@ -386,7 +451,155 @@ class engine extends \core_search\engine {
         if ($succeededdocs) {
             pro_bridge::after_documents_indexed($succeededdocs);
         }
+        unset($mapped, $results, $succeededdocs);
+        get_fast_modinfo(0, 0, true);
         return [$processed, $failed, 1];
+    }
+
+    /**
+     * Return live document counts per search area from Typesense via a single facet query.
+     *
+     * @return array<string, int> Map of areaid => document count in Typesense.
+     */
+    public function get_area_document_counts(): array {
+        if (!$this->is_installed()) {
+            return [];
+        }
+        try {
+            $collection = $this->ensure_collection();
+            $res = $this->get_client()->search($collection, [
+                'q' => '*',
+                'query_by' => 'title',
+                'facet_by' => 'areaid',
+                'max_facet_values' => 250,
+                'per_page' => 0,
+            ]);
+            $counts = [];
+            foreach ($res['facet_counts'] ?? [] as $facet) {
+                if (($facet['field_name'] ?? '') !== 'areaid') {
+                    continue;
+                }
+                foreach ($facet['counts'] ?? [] as $entry) {
+                    $val = (string)($entry['value'] ?? '');
+                    if ($val !== '') {
+                        $counts[$val] = (int)($entry['count'] ?? 0);
+                    }
+                }
+            }
+            return $counts;
+        } catch (\Throwable $e) {
+            debugging('Typesense area facet count failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            return [];
+        }
+    }
+
+    /**
+     * Reset a single search area's indexing state so the next bulk indexer run re-indexes it from scratch via NDJSON.
+     *
+     * Also clears any slow context-level gradual reindex queue entries for this area in {search_index_requests}.
+     *
+     * @param \core_search\base $searcharea Target search area instance.
+     * @return void
+     */
+    public static function reset_area_for_reindex(\core_search\base $searcharea): void {
+        global $DB;
+        [$componentconfigname, $varname] = $searcharea->get_config_var_name();
+        $suffixes = [
+            'indexingstart',
+            'indexingend',
+            'lastindexrun',
+            'docsignored',
+            'docsprocessed',
+            'recordsprocessed',
+            'partial',
+        ];
+        foreach ($suffixes as $suffix) {
+            unset_config($varname . '_' . $suffix, $componentconfigname);
+        }
+        try {
+            $DB->delete_records('search_index_requests', ['searcharea' => $searcharea->get_area_id()]);
+        } catch (\Throwable $e) {
+            debugging('Could not clear search_index_requests for area: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
+    }
+
+    /**
+     * Execute a fast bulk NDJSON re-index of a single search area directly without context-queue overhead.
+     *
+     * @param \core_search\base $searcharea Target search area instance.
+     * @param bool $deletefirst Whether to delete existing documents for this area before indexing.
+     * @param int $timelimit Optional time limit in seconds (0 = no limit).
+     * @param \core\progress\base|null $progress Optional Moodle progress tracker.
+     * @return array{records:int, docs:int, ignored:int, batches:int, partial:bool, elapsed:float}
+     */
+    public function fast_reindex_area(
+        \core_search\base $searcharea,
+        bool $deletefirst = false,
+        int $timelimit = 0,
+        ?\core\progress\base $progress = null
+    ): array {
+        global $DB;
+        \core_php_time_limit::raise(0);
+        $this->index_starting(false);
+        $this->area_index_starting($searcharea, false);
+
+        $areaid = $searcharea->get_area_id();
+        if ($deletefirst) {
+            $this->delete($areaid);
+        }
+        try {
+            $DB->delete_records('search_index_requests', ['searcharea' => $areaid]);
+        } catch (\Throwable $e) {
+            debugging('Could not clear search_index_requests: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
+
+        $indexingstart = time();
+        $started = microtime(true);
+        [$componentconfigname, $varname] = $searcharea->get_config_var_name();
+
+        $recordset = $searcharea->get_recordset_by_timestamp(0);
+        $fileindexing = $this->file_indexing_enabled() && $searcharea->uses_file_indexing();
+        $options = [
+            'indexfiles' => $fileindexing,
+            'lastindexedtime' => 0,
+        ];
+        if ($timelimit > 0) {
+            $options['stopat'] = microtime(true) + $timelimit;
+        }
+        if ($progress !== null) {
+            $options['progress'] = $progress;
+        }
+
+        $iterator = new \core\dml\recordset_walk($recordset, [$searcharea, 'get_document'], $options);
+        [$numrecords, $numdocs, $numdocsignored, $lastindexeddoc, $partial, $batches] =
+            $this->add_documents($iterator, $searcharea, $options);
+        $recordset->close();
+
+        $this->area_index_complete($searcharea, $numdocs, false);
+
+        $indexingend = time();
+        set_config($varname . '_indexingstart', $indexingstart, $componentconfigname);
+        set_config($varname . '_indexingend', $indexingend, $componentconfigname);
+        set_config($varname . '_docsignored', $numdocsignored, $componentconfigname);
+        set_config($varname . '_docsprocessed', $numdocs, $componentconfigname);
+        set_config($varname . '_recordsprocessed', $numrecords, $componentconfigname);
+        if ($lastindexeddoc > 0) {
+            set_config($varname . '_lastindexrun', $lastindexeddoc, $componentconfigname);
+        }
+        if ($partial) {
+            set_config($varname . '_partial', 1, $componentconfigname);
+        } else {
+            unset_config($varname . '_partial', $componentconfigname);
+        }
+
+        return [
+            'records' => (int)$numrecords,
+            'docs' => (int)$numdocs,
+            'ignored' => (int)$numdocsignored,
+            'batches' => (int)$batches,
+            'partial' => (bool)$partial,
+            'elapsed' => round(microtime(true) - $started, 2),
+        ];
     }
 
     /**
@@ -405,8 +618,10 @@ class engine extends \core_search\engine {
             $this->get_client()->add_document($collection, $mapped);
             pro_bridge::after_documents_indexed([$mapped]);
         } catch (\moodle_exception $e) {
-            debugging('Typesense add_document failed for ' . $document->get('id') . ': ' . $e->getMessage(),
-                DEBUG_DEVELOPER);
+            debugging(
+                'Typesense add_document failed for ' . $document->get('id') . ': ' . $e->getMessage(),
+                DEBUG_DEVELOPER
+            );
             return false;
         }
         return true;
