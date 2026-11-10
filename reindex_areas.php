@@ -18,8 +18,8 @@
  * Typesense Fast Bulk NDJSON Search Area Re-indexer admin page.
  *
  * Streams search area recordsets directly into Typesense's bulk NDJSON import API
- * with raised memory limits (MEMORY_HUGE), bypassing Moodle core's slow context-by-context
- * {search_index_requests} queue.
+ * with raised memory limits (MEMORY_HUGE) and Primary-Key chunking, either in the
+ * background via Moodle Ad-hoc Tasks (avoiding mod_proxy_fcgi timeouts) or inline.
  *
  * @package    search_typesense
  * @copyright  2026 Christopher Murad <chrismurad@mfgrpllc.com>
@@ -51,19 +51,61 @@ $PAGE->set_heading(get_string('reindexareas_title', 'search_typesense'));
 
 $tsengine = new engine();
 
-// Handle lightweight POST actions that redirect immediately.
-if (in_array($action, ['queuearea', 'queueall', 'fixcontexts'], true) && data_submitted()) {
+// Handle POST actions that redirect immediately.
+$redirectactions = ['runbg', 'runbgall', 'cancelbg', 'queuearea', 'queueall', 'fixcontexts'];
+if (in_array($action, $redirectactions, true) && data_submitted()) {
     require_sesskey();
 
     if ($action === 'fixcontexts') {
-        \core_php_time_limit::raise(0);
-        raise_memory_limit(MEMORY_HUGE);
-        \context_helper::build_all_paths(false);
+        $res = engine::repair_unbuilt_contexts();
         redirect(
             $pageurl,
-            get_string('reindexareas_contexts_fixed', 'search_typesense'),
+            get_string('reindexareas_contexts_fixed_count', 'search_typesense', (object)$res),
             null,
             \core\output\notification::NOTIFY_SUCCESS
+        );
+    }
+
+    if ($action === 'runbg' && $areaid !== '') {
+        $targetarea = \core_search\manager::get_search_area($areaid);
+        if (!$targetarea) {
+            throw new moodle_exception('invalidrequest');
+        }
+        engine::reset_area_for_reindex($targetarea);
+        engine::enqueue_area_reindex_task($areaid, (bool)$deletefirst, 0);
+        redirect(
+            $pageurl,
+            get_string('reindexareas_bg_queued_single', 'search_typesense', $targetarea->get_visible_name()),
+            null,
+            \core\output\notification::NOTIFY_SUCCESS
+        );
+    }
+
+    if ($action === 'runbgall') {
+        $enabledareas = \core_search\manager::get_search_areas_list(true);
+        $queued = 0;
+        foreach ($enabledareas as $id => $area) {
+            if ($area->supports_get_document_recordset()) {
+                engine::reset_area_for_reindex($area);
+                engine::enqueue_area_reindex_task($id, false, 0);
+                $queued++;
+            }
+        }
+        redirect(
+            $pageurl,
+            get_string('reindexareas_bg_queued_all', 'search_typesense', $queued),
+            null,
+            \core\output\notification::NOTIFY_SUCCESS
+        );
+    }
+
+    if ($action === 'cancelbg') {
+        $removed = engine::cancel_queued_reindex_tasks($areaid);
+        redirect(
+            $pageurl,
+            get_string('reindexareas_bg_cancelled', 'search_typesense', $removed),
+            null,
+            \core\output\notification::NOTIFY_INFO
         );
     }
 
@@ -137,6 +179,51 @@ if ($action === 'runnow' && $areaid !== '' && data_submitted()) {
     }
 }
 
+// Check for active/queued background ad-hoc tasks and live progress.
+$queuedtasks = engine::get_queued_reindex_tasks();
+$queuedbyarea = [];
+foreach ($queuedtasks as $tinfo) {
+    if (!empty($tinfo['areaid'])) {
+        $queuedbyarea[$tinfo['areaid']] = $tinfo;
+    }
+}
+$activearea = (string)get_config('search_typesense', 'active_reindex_area');
+$activeprogressraw = (string)get_config('search_typesense', 'active_reindex_progress');
+$activeprogress = $activeprogressraw !== '' ? json_decode($activeprogressraw, true) : null;
+
+if (!empty($queuedtasks) || $activearea !== '') {
+    echo html_writer::start_div('alert alert-info d-flex justify-content-between align-items-center flex-wrap mb-3');
+    echo html_writer::start_div('mr-3 me-3');
+    echo html_writer::tag('strong', get_string('reindexareas_bg_active_title', 'search_typesense', count($queuedtasks)));
+    if (is_array($activeprogress) && !empty($activeprogress['areaid'])) {
+        $pinfo = (object)[
+            'areaid' => s((string)$activeprogress['areaid']),
+            'docs' => number_format((int)($activeprogress['docs'] ?? 0)),
+            'records' => number_format((int)($activeprogress['records'] ?? 0)),
+            'batches' => number_format((int)($activeprogress['batches'] ?? 0)),
+            'rate' => number_format((int)($activeprogress['rate'] ?? 0)),
+        ];
+        echo html_writer::div(
+            get_string('reindexareas_bg_active_progress', 'search_typesense', $pinfo),
+            'small mt-1'
+        );
+    }
+    echo html_writer::end_div();
+
+    $cancelform = html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    $cancelform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'cancelbg']);
+    $cancelform .= html_writer::tag(
+        'button',
+        get_string('reindexareas_btn_cancelbg', 'search_typesense'),
+        ['type' => 'submit', 'class' => 'btn btn-outline-danger btn-sm']
+    );
+    echo html_writer::tag('form', $cancelform, ['method' => 'post', 'action' => $pageurl->out(false), 'class' => 'd-inline']);
+    echo html_writer::end_div();
+
+    // Auto-refresh every 5 seconds while a background ad-hoc task is running/queued.
+    $PAGE->requires->js_init_code('setTimeout(function(){ window.location.reload(); }, 5000);');
+}
+
 // Check for broken/unbuilt context rows that cause Moodle core's get_in_or_equal() error.
 $missingcontexts = (int)$DB->count_records_select('context', 'path IS NULL OR depth = 0');
 if ($missingcontexts > 0) {
@@ -146,8 +233,17 @@ if ($missingcontexts > 0) {
     );
 }
 
-// Top action toolbar: Queue All + Repair Context Paths + CLI tip.
+// Top action toolbar: Run All in Background + Queue All + Repair Context Paths + Core Search Areas.
 echo html_writer::start_div('d-flex flex-wrap align-items-center mb-3');
+
+$bgallform = html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+$bgallform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'runbgall']);
+$bgallform .= html_writer::tag(
+    'button',
+    get_string('reindexareas_btn_runbgall', 'search_typesense'),
+    ['type' => 'submit', 'class' => 'btn btn-primary btn-sm mr-2 me-2 mb-1']
+);
+echo html_writer::tag('form', $bgallform, ['method' => 'post', 'action' => $pageurl->out(false), 'class' => 'd-inline']);
 
 $queueallform = html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
 $queueallform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'queueall']);
@@ -212,9 +308,19 @@ foreach ($searchareas as $id => $area) {
     $cfg = $areasconfig[$id] ?? null;
     $newestdoc = ($cfg && !empty($cfg->lastindexrun)) ? userdate((int)$cfg->lastindexrun) : '-';
     $lastrun = '-';
-    if ($cfg && !empty($cfg->indexingstart)) {
+    if (isset($queuedbyarea[$id]) || $activearea === $id) {
+        $isrunning = ($activearea === $id) || !empty($queuedbyarea[$id]['timestarted']);
+        $statusstr = $isrunning
+            ? get_string('reindexareas_status_running', 'search_typesense')
+            : get_string('reindexareas_status_bgqueued', 'search_typesense');
+        $lastrun = html_writer::tag('span', $statusstr, ['class' => 'badge badge-primary bg-primary text-white']);
+        if ($cfg && !empty($cfg->docsprocessed)) {
+            $doccounttxt = '(' . number_format((int)$cfg->docsprocessed) . ' docs)';
+            $lastrun .= ' ' . html_writer::tag('span', $doccounttxt, ['class' => 'small']);
+        }
+    } else if ($cfg && !empty($cfg->indexingstart)) {
         $duration = max(0, (int)$cfg->indexingend - (int)$cfg->indexingstart);
-        $lastrun = $duration . 's (' . (int)$cfg->docsprocessed . ' docs)';
+        $lastrun = $duration . 's (' . number_format((int)$cfg->docsprocessed) . ' docs)';
         if (!empty($cfg->partial)) {
             $lastrun .= ' ' . html_writer::tag(
                 'span',
@@ -232,14 +338,29 @@ foreach ($searchareas as $id => $area) {
 
     $actionshtml = '';
     if ($area->supports_get_document_recordset()) {
-        // 1. Fast Re-index Now (NDJSON) button.
+        // 1. Primary action: Run in Background (Ad-hoc Task) — avoids mod_proxy_fcgi timeouts.
+        $bgform = html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+        $bgform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'runbg']);
+        $bgform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'areaid', 'value' => $id]);
+        $bgform .= html_writer::tag(
+            'button',
+            get_string('reindexareas_btn_runbg', 'search_typesense'),
+            ['type' => 'submit', 'class' => 'btn btn-primary btn-sm mr-1 me-1 mb-1']
+        );
+        $actionshtml .= html_writer::tag(
+            'form',
+            $bgform,
+            ['method' => 'post', 'action' => $pageurl->out(false), 'class' => 'd-inline']
+        );
+
+        // 2. Secondary action: Run Inline (for small areas).
         $runform = html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
         $runform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'runnow']);
         $runform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'areaid', 'value' => $id]);
         $runform .= html_writer::tag(
             'button',
             get_string('reindexareas_btn_runnow', 'search_typesense'),
-            ['type' => 'submit', 'class' => 'btn btn-primary btn-sm mr-1 me-1 mb-1']
+            ['type' => 'submit', 'class' => 'btn btn-outline-primary btn-sm mr-1 me-1 mb-1']
         );
         $actionshtml .= html_writer::tag(
             'form',
@@ -247,7 +368,7 @@ foreach ($searchareas as $id => $area) {
             ['method' => 'post', 'action' => $pageurl->out(false), 'class' => 'd-inline']
         );
 
-        // 2. Queue for Next Cron / CLI button.
+        // 3. Reset / Queue for Scheduled Cron.
         $qform = html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
         $qform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'queuearea']);
         $qform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'areaid', 'value' => $id]);

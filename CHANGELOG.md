@@ -4,6 +4,23 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.4] - 2026-11-10 (`2026111001`)
+
+### Added & Fixed
+- **Universal Primary-Key Chunked + Pre-Joined Fast Indexer Across All Activity Plugins (`\search_typesense\engine`):**
+  - Replaced Moodle core's slow unindexed `ORDER BY timemodified ASC` + per-row `get_fast_modinfo()` (`MAX_CACHED_COURSES = 10` cache thrashing) + per-row `{files}` lookups across **all** `\core_search\base_activity` plugins (`assign`, `quiz`, `feedback`, `page`, `resource`, `zoom`, `videotime`, `lti`, `customcert`, and any newly installed `mod_*` activity plugins) with `engine::fast_reindex_activity_area()`:
+    - Streams `{modulename}` in 2,500-row primary-key (`m.id`) chunks pre-joined with `{course_modules}` and `{context}` (`ORDER BY m.course ASC, m.id ASC`), preloading contexts via `\context_helper::preload_from_record()` and stamping `_ts_ctxid` with zero `get_fast_modinfo()` calls.
+    - Performs a single `SELECT DISTINCT contextid FROM {files} WHERE contextid IN (...)` query per 2,500-row chunk so `$fs->get_area_files()` is only called for activities that actually have attached files.
+  - Added dedicated PK-chunked + pre-joined streamers for `mod_forum-post` (`engine::fast_reindex_forum_post_area()`, 5,000-row PK chunks pre-joined with `{forum_discussions}`, `{forum}`, `{course_modules}`, and `{context}`) and `core_message-*` (`engine::fast_reindex_message_area()`, 5,000-row PK chunks with batch user context preloading, bypassing unindexed `ORDER BY timecreated ASC` full-table scans on multi-million-row `{messages}` tables).
+  - **Automatic CLI / Cron Interception (`engine::area_index_starting`, `engine::add_documents`):** Automatically intercepts initial/unindexed area runs (`_indexingstart <= 0`), interrupted PK-cursor resumptions (`_pkcursor > 0`), and full reindexes during standard Moodle scheduled tasks (`\core\task\search_index_task`) and `search/cli/indexer.php` so any newly installed plugin or unindexed search area uses the fast PK-chunked streamer automatically.
+- **Background Ad-hoc Task Queue & Live Progress Tracking (`\search_typesense\task\fast_reindex_area_adhoc_task`, `reindex_areas.php`):**
+  - Added **Run in Background (NDJSON)** (`fast_reindex_area_adhoc_task`) and **Run all areas in Background** actions on `reindex_areas.php` so large search areas run via Moodle's CLI cron runner with zero Apache `mod_proxy_fcgi` HTTP gateway timeouts.
+  - Persists `_docsprocessed`, `_recordsprocessed`, `_lastindexrun`, and `_pkcursor` after every 250–500 document NDJSON batch and displays a live auto-refreshing status banner on `reindex_areas.php`.
+- **Orphaned `{context}` & `{course_modules}` Cleanup (`\search_typesense\engine::repair_unbuilt_contexts`):**
+  - Enhanced **Repair missing context paths** to detect and delete orphaned `{course_modules}`, `{block_instances}`, and `{context}` rows (`path IS NULL OR depth = 0`) whose parent course or parent context was previously deleted from `{course}`, permanently resolving persistent unbuilt context warnings.
+
+---
+
 ## [1.1.3] - 2026-11-10 (`2026111000`)
 
 ### Added & Fixed

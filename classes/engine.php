@@ -47,6 +47,20 @@ class engine extends \core_search\engine {
     protected $totalresults = null;
 
     /**
+     * Guard flag indicating fast_reindex_area() is currently executing.
+     *
+     * @var bool
+     */
+    protected bool $infastreindex = false;
+
+    /**
+     * Pre-indexed area stats captured during area_index_starting() to pass back to manager::index().
+     *
+     * @var array<string, array>
+     */
+    protected array $preindexedstats = [];
+
+    /**
      * Read a configuration setting, respecting alternate engine configuration when active.
      *
      * @param string $name Setting name.
@@ -349,7 +363,7 @@ class engine extends \core_search\engine {
         raise_memory_limit(MEMORY_HUGE);
         try {
             if ($DB->record_exists_select('context', 'path IS NULL OR depth = 0')) {
-                \context_helper::build_all_paths(false);
+                self::repair_unbuilt_contexts();
             }
         } catch (\Throwable $e) {
             debugging('Context path check skipped: ' . $e->getMessage(), DEBUG_DEVELOPER);
@@ -357,10 +371,166 @@ class engine extends \core_search\engine {
     }
 
     /**
-     * Prepare memory and clear static course modinfo caches before indexing a search area.
+     * Repair unbuilt {context} rows and remove orphaned contexts whose parent course/context was deleted.
      *
-     * Invoked by \core_search\manager::index() prior to opening the area's DB recordset,
-     * preventing 256MB memory exhaustion on large tables such as {assign}.
+     * Fixes the root cause of Moodle core's Gradual Re-index page failing with
+     * "moodle_database::get_in_or_equal() does not accept empty arrays" when orphaned
+     * {course_modules} or {block_instances} records reference deleted courses/contexts.
+     *
+     * @return array{before:int, after:int, repaired:int}
+     */
+    public static function repair_unbuilt_contexts(): array {
+        global $DB;
+        \core_php_time_limit::raise(0);
+        raise_memory_limit(MEMORY_HUGE);
+
+        $before = (int)$DB->count_records_select('context', 'path IS NULL OR depth = 0');
+        if ($before === 0) {
+            return ['before' => 0, 'after' => 0, 'repaired' => 0];
+        }
+
+        try {
+            \context_helper::cleanup_instances();
+        } catch (\Throwable $e) {
+            debugging('context_helper::cleanup_instances skipped: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
+        try {
+            \context_helper::build_all_paths(false);
+        } catch (\Throwable $e) {
+            debugging('context_helper::build_all_paths skipped: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
+
+        // Any remaining rows with NULL path or 0 depth are orphans whose parent course or parent context no longer exists.
+        $remaining = $DB->get_records_select('context', 'path IS NULL OR depth = 0', null, 'id ASC', 'id, contextlevel, instanceid');
+        if ($remaining) {
+            $orphancmids = [];
+            $orphanbiids = [];
+            $orphanctxids = [];
+            foreach ($remaining as $ctx) {
+                if ((int)$ctx->id === SYSCONTEXTID) {
+                    continue;
+                }
+                $orphanctxids[] = (int)$ctx->id;
+                if ((int)$ctx->contextlevel === CONTEXT_MODULE && !empty($ctx->instanceid)) {
+                    $cm = $DB->get_record('course_modules', ['id' => (int)$ctx->instanceid], 'id, course');
+                    if ($cm && !$DB->record_exists('course', ['id' => (int)$cm->course])) {
+                        $orphancmids[] = (int)$cm->id;
+                    }
+                } else if ((int)$ctx->contextlevel === CONTEXT_BLOCK && !empty($ctx->instanceid)) {
+                    $bi = $DB->get_record('block_instances', ['id' => (int)$ctx->instanceid], 'id, parentcontextid');
+                    if ($bi && !$DB->record_exists('context', ['id' => (int)$bi->parentcontextid])) {
+                        $orphanbiids[] = (int)$bi->id;
+                    }
+                }
+            }
+            if ($orphancmids) {
+                $DB->delete_records_list('course_modules', 'id', $orphancmids);
+            }
+            if ($orphanbiids) {
+                $DB->delete_records_list('block_instances', 'id', $orphanbiids);
+            }
+            if ($orphanctxids) {
+                $DB->delete_records_list('context', 'id', $orphanctxids);
+            }
+            \context_helper::reset_caches();
+        }
+
+        $after = (int)$DB->count_records_select('context', 'path IS NULL OR depth = 0');
+        return [
+            'before' => $before,
+            'after' => $after,
+            'repaired' => max(0, $before - $after),
+        ];
+    }
+
+    /**
+     * Enqueue a background ad-hoc task to run Fast NDJSON Re-index for a single search area.
+     *
+     * Avoids Apache mod_proxy_fcgi / ALB HTTP timeouts on large tables by executing via CLI cron.
+     *
+     * @param string $areaid Target search area ID.
+     * @param bool $deletefirst Whether to delete existing documents in the area first.
+     * @param int $timelimit Optional per-run time limit in seconds (0 = unlimited).
+     * @return bool True if queued (or already queued).
+     */
+    public static function enqueue_area_reindex_task(
+        string $areaid,
+        bool $deletefirst = false,
+        int $timelimit = 0
+    ): bool {
+        $existing = self::get_queued_reindex_tasks();
+        foreach ($existing as $taskinfo) {
+            if (($taskinfo['areaid'] ?? '') === $areaid) {
+                return true;
+            }
+        }
+        $task = new \search_typesense\task\fast_reindex_area_adhoc_task();
+        $task->set_component('search_typesense');
+        $task->set_custom_data([
+            'areaid' => $areaid,
+            'deletefirst' => $deletefirst,
+            'timelimit' => $timelimit,
+            'queuedat' => time(),
+        ]);
+        \core\task\manager::queue_adhoc_task($task);
+        return true;
+    }
+
+    /**
+     * Return all queued or currently running fast_reindex_area_adhoc_task records.
+     *
+     * @return array<int, array{id:int, areaid:string, deletefirst:bool, timestarted:int, timecreated:int}>
+     */
+    public static function get_queued_reindex_tasks(): array {
+        global $DB;
+        $classname = '\\search_typesense\\task\\fast_reindex_area_adhoc_task';
+        $altclassname = 'search_typesense\\task\\fast_reindex_area_adhoc_task';
+        try {
+            [$insql, $params] = $DB->get_in_or_equal([$classname, $altclassname], SQL_PARAMS_NAMED);
+            $records = $DB->get_records_select('task_adhoc', "classname $insql", $params, 'id ASC');
+        } catch (\Throwable $e) {
+            return [];
+        }
+        $list = [];
+        foreach ($records as $rec) {
+            $data = json_decode((string)($rec->customdata ?? '{}'), true);
+            $list[(int)$rec->id] = [
+                'id' => (int)$rec->id,
+                'areaid' => (string)($data['areaid'] ?? ''),
+                'deletefirst' => !empty($data['deletefirst']),
+                'timestarted' => (int)($rec->timestarted ?? 0),
+                'timecreated' => (int)($rec->timecreated ?? $data['queuedat'] ?? 0),
+            ];
+        }
+        return $list;
+    }
+
+    /**
+     * Cancel queued fast_reindex_area_adhoc_task records (optionally filtered by areaid).
+     *
+     * @param string $areaid Optional search area ID to cancel (empty = cancel all).
+     * @return int Number of task rows removed.
+     */
+    public static function cancel_queued_reindex_tasks(string $areaid = ''): int {
+        global $DB;
+        $tasks = self::get_queued_reindex_tasks();
+        $removed = 0;
+        foreach ($tasks as $id => $info) {
+            if ($areaid === '' || $info['areaid'] === $areaid) {
+                $DB->delete_records('task_adhoc', ['id' => $id]);
+                $removed++;
+            }
+        }
+        if ($areaid === '' || get_config('search_typesense', 'active_reindex_area') === $areaid) {
+            unset_config('active_reindex_area', 'search_typesense');
+            unset_config('active_reindex_progress', 'search_typesense');
+        }
+        return $removed;
+    }
+
+    /**
+     * Prepare memory, clear static course modinfo caches, and accelerate initial/resumed indexing
+     * using Primary-Key chunked NDJSON streaming before Moodle core opens a full-table recordset.
      *
      * @param \core_search\base $searcharea The search area starting indexing.
      * @param bool $fullindex True if a full index is being performed.
@@ -375,6 +545,55 @@ class engine extends \core_search\engine {
         if (function_exists('gc_collect_cycles')) {
             gc_collect_cycles();
         }
+
+        if ($this->infastreindex || !$searcharea instanceof \core_search\base) {
+            return;
+        }
+        $areaid = $searcharea->get_area_id();
+        $ispkarea = ($searcharea instanceof \core_message\search\base_message)
+            || ($searcharea instanceof \core_search\base_activity && str_ends_with($areaid, '-activity'))
+            || ($areaid === 'mod_forum-post');
+        if (!$ispkarea) {
+            return;
+        }
+
+        [$componentconfigname, $varname] = $searcharea->get_config_var_name();
+        $prevstart = (int)get_config($componentconfigname, $varname . '_indexingstart');
+        $pkcursor = (int)get_config($componentconfigname, $varname . '_pkcursor');
+        if ($fullindex || $prevstart <= 0 || $pkcursor > 0) {
+            $stats = $this->fast_reindex_area($searcharea, (bool)$fullindex, 0);
+            $this->preindexedstats[$areaid] = $stats;
+            $now = time();
+            set_config($varname . '_indexingstart', $now, $componentconfigname);
+            unset_config($varname . '_partial', $componentconfigname);
+        }
+    }
+
+    /**
+     * Override parent add_documents() to return pre-indexed PK-chunked stats when area_index_starting()
+     * already streamed the bulk table, avoiding duplicate full-table scans in manager::index().
+     *
+     * @param \Iterator $iterator Recordset walk iterator.
+     * @param \core_search\base $searcharea Search area instance.
+     * @param array $options Indexing options.
+     * @return array Six-element array [records, docs, ignored, lastindexeddoc, partial, batches].
+     */
+    public function add_documents($iterator, $searcharea, $options) {
+        $areaid = $searcharea->get_area_id();
+        if (isset($this->preindexedstats[$areaid])) {
+            $pre = $this->preindexedstats[$areaid];
+            unset($this->preindexedstats[$areaid]);
+            $delta = parent::add_documents($iterator, $searcharea, $options);
+            return [
+                (int)$pre['records'] + (int)($delta[0] ?? 0),
+                (int)$pre['docs'] + (int)($delta[1] ?? 0),
+                (int)$pre['ignored'] + (int)($delta[2] ?? 0),
+                max((int)($pre['lastindexeddoc'] ?? time()), (int)($delta[3] ?? 0)),
+                (bool)($pre['partial'] || !empty($delta[4])),
+                (int)$pre['batches'] + (int)($delta[5] ?? 0),
+            ];
+        }
+        return parent::add_documents($iterator, $searcharea, $options);
     }
 
     /**
@@ -512,6 +731,7 @@ class engine extends \core_search\engine {
             'docsprocessed',
             'recordsprocessed',
             'partial',
+            'pkcursor',
         ];
         foreach ($suffixes as $suffix) {
             unset_config($varname . '_' . $suffix, $componentconfigname);
@@ -525,6 +745,9 @@ class engine extends \core_search\engine {
 
     /**
      * Execute a fast bulk NDJSON re-index of a single search area directly without context-queue overhead.
+     *
+     * Persists progress counters (_docsprocessed, _recordsprocessed, _lastindexrun) incrementally after every
+     * NDJSON batch so progress is visible in real time and preserved across time limits or interruptions.
      *
      * @param \core_search\base $searcharea Target search area instance.
      * @param bool $deletefirst Whether to delete existing documents for this area before indexing.
@@ -540,56 +763,774 @@ class engine extends \core_search\engine {
     ): array {
         global $DB;
         \core_php_time_limit::raise(0);
-        $this->index_starting(false);
-        $this->area_index_starting($searcharea, false);
-
-        $areaid = $searcharea->get_area_id();
-        if ($deletefirst) {
-            $this->delete($areaid);
-        }
+        $this->infastreindex = true;
         try {
-            $DB->delete_records('search_index_requests', ['searcharea' => $areaid]);
-        } catch (\Throwable $e) {
-            debugging('Could not clear search_index_requests: ' . $e->getMessage(), DEBUG_DEVELOPER);
-        }
+            $this->index_starting(false);
+            $this->area_index_starting($searcharea, false);
 
-        $indexingstart = time();
-        $started = microtime(true);
-        [$componentconfigname, $varname] = $searcharea->get_config_var_name();
+            $areaid = $searcharea->get_area_id();
+            [$componentconfigname, $varname] = $searcharea->get_config_var_name();
 
-        $recordset = $searcharea->get_recordset_by_timestamp(0);
-        $fileindexing = $this->file_indexing_enabled() && $searcharea->uses_file_indexing();
-        $options = [
+            if ($deletefirst) {
+                $this->delete($areaid);
+                unset_config($varname . '_pkcursor', $componentconfigname);
+                unset_config($varname . '_partial', $componentconfigname);
+            }
+            try {
+                $DB->delete_records('search_index_requests', ['searcharea' => $areaid]);
+            } catch (\Throwable $e) {
+                debugging('Could not clear search_index_requests: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            }
+
+            $indexingstart = time();
+            $started = microtime(true);
+            set_config($varname . '_indexingstart', $indexingstart, $componentconfigname);
+            set_config('active_reindex_area', $areaid, 'search_typesense');
+
+            // Use Primary-Key range chunked streaming for core_message, base_activity, and forum_post areas.
+            if ($searcharea instanceof \core_message\search\base_message) {
+                $stats = $this->fast_reindex_message_area($searcharea, $timelimit, $started);
+                $this->area_index_complete($searcharea, $stats['docs'], false);
+                unset_config('active_reindex_area', 'search_typesense');
+                unset_config('active_reindex_progress', 'search_typesense');
+                set_config(
+                    'last_reindex_summary',
+                    json_encode(array_merge(['areaid' => $areaid, 'time' => time()], $stats)),
+                    'search_typesense'
+                );
+                return $stats;
+            }
+            if ($searcharea instanceof \core_search\base_activity && str_ends_with($areaid, '-activity')) {
+                $stats = $this->fast_reindex_activity_area($searcharea, $timelimit, $started, $progress);
+                $this->area_index_complete($searcharea, $stats['docs'], false);
+                unset_config('active_reindex_area', 'search_typesense');
+                unset_config('active_reindex_progress', 'search_typesense');
+                set_config(
+                    'last_reindex_summary',
+                    json_encode(array_merge(['areaid' => $areaid, 'time' => time()], $stats)),
+                    'search_typesense'
+                );
+                return $stats;
+            }
+            if ($areaid === 'mod_forum-post') {
+                $stats = $this->fast_reindex_forum_post_area($searcharea, $timelimit, $started, $progress);
+                $this->area_index_complete($searcharea, $stats['docs'], false);
+                unset_config('active_reindex_area', 'search_typesense');
+                unset_config('active_reindex_progress', 'search_typesense');
+                set_config(
+                    'last_reindex_summary',
+                    json_encode(array_merge(['areaid' => $areaid, 'time' => time()], $stats)),
+                    'search_typesense'
+                );
+                return $stats;
+            }
+
+            $resume = (bool)get_config($componentconfigname, $varname . '_partial');
+            $startfrom = $resume ? (int)get_config($componentconfigname, $varname . '_lastindexrun') : 0;
+            $numrecords = $resume ? (int)get_config($componentconfigname, $varname . '_recordsprocessed') : 0;
+            $numdocs = $resume ? (int)get_config($componentconfigname, $varname . '_docsprocessed') : 0;
+            $numdocsignored = $resume ? (int)get_config($componentconfigname, $varname . '_docsignored') : 0;
+            $batches = 0;
+            $lastindexeddoc = $startfrom;
+            $firstindexeddoc = 0;
+            $partial = false;
+
+            $recordset = $searcharea->get_recordset_by_timestamp($startfrom);
+            $fileindexing = $this->file_indexing_enabled() && $searcharea->uses_file_indexing();
+            $options = [
             'indexfiles' => $fileindexing,
-            'lastindexedtime' => 0,
-        ];
-        if ($timelimit > 0) {
-            $options['stopat'] = microtime(true) + $timelimit;
+            'lastindexedtime' => $startfrom,
+            ];
+            $stopat = ($timelimit > 0) ? ($started + $timelimit) : 0;
+            $batchmax = $this->get_batch_max_documents();
+            $contentmax = $this->get_batch_max_content();
+            $currentbatch = [];
+
+            $flushbatch = function () use (
+                &$currentbatch,
+                &$numdocs,
+                &$numdocsignored,
+                &$batches,
+                &$numrecords,
+                &$lastindexeddoc,
+                $fileindexing,
+                $varname,
+                $componentconfigname,
+                $areaid,
+                $started,
+                $progress
+            ): void {
+                if (!$currentbatch) {
+                    return;
+                }
+                [$processed, $failed, $bcount] = $this->add_document_batch($currentbatch, $fileindexing);
+                $numdocs += $processed;
+                $numdocsignored += $failed;
+                $batches += $bcount;
+                $currentbatch = [];
+
+                $now = time();
+                set_config($varname . '_docsprocessed', $numdocs, $componentconfigname);
+                set_config($varname . '_recordsprocessed', $numrecords, $componentconfigname);
+                set_config($varname . '_docsignored', $numdocsignored, $componentconfigname);
+                set_config($varname . '_indexingend', $now, $componentconfigname);
+                if ($lastindexeddoc > 0) {
+                    set_config($varname . '_lastindexrun', $lastindexeddoc, $componentconfigname);
+                }
+                $elapsed = max(0.01, round(microtime(true) - $started, 2));
+                set_config('active_reindex_progress', json_encode([
+                'areaid' => $areaid,
+                'docs' => $numdocs,
+                'records' => $numrecords,
+                'batches' => $batches,
+                'rate' => (int)round($numdocs / $elapsed),
+                'updated' => $now,
+                ]), 'search_typesense');
+                if ($progress !== null) {
+                    $progress->progress();
+                }
+            };
+
+            if ($recordset) {
+                $iterator = new \core\dml\recordset_walk($recordset, [$searcharea, 'get_document'], $options);
+                foreach ($iterator as $document) {
+                    if ($stopat > 0 && $lastindexeddoc !== $firstindexeddoc && microtime(true) >= $stopat) {
+                        $partial = true;
+                        break;
+                    }
+                    if (!$document instanceof \core_search\document) {
+                        $numdocsignored++;
+                        continue;
+                    }
+                    if ($startfrom === 0) {
+                        $document->set_is_new(true);
+                    }
+                    if ($fileindexing) {
+                        $searcharea->attach_files($document);
+                    }
+                    if (strlen((string)$document->get('content')) <= $contentmax) {
+                        $currentbatch[] = $document;
+                        if (count($currentbatch) >= $batchmax) {
+                            $flushbatch();
+                        }
+                    } else {
+                        if ($this->add_document($document, $fileindexing)) {
+                            $numdocs++;
+                        } else {
+                            $numdocsignored++;
+                        }
+                        $batches++;
+                    }
+                    $lastindexeddoc = (int)$document->get('modified');
+                    if (!$firstindexeddoc) {
+                        $firstindexeddoc = $lastindexeddoc;
+                    }
+                    $numrecords++;
+                }
+                $flushbatch();
+                $recordset->close();
+            }
+
+            $this->area_index_complete($searcharea, $numdocs, false);
+
+            $indexingend = time();
+            set_config($varname . '_indexingend', $indexingend, $componentconfigname);
+            set_config($varname . '_docsignored', $numdocsignored, $componentconfigname);
+            set_config($varname . '_docsprocessed', $numdocs, $componentconfigname);
+            set_config($varname . '_recordsprocessed', $numrecords, $componentconfigname);
+            if ($lastindexeddoc > 0) {
+                set_config($varname . '_lastindexrun', $lastindexeddoc, $componentconfigname);
+            } else if (!$partial) {
+                set_config($varname . '_lastindexrun', $indexingend, $componentconfigname);
+            }
+            if ($partial) {
+                set_config($varname . '_partial', 1, $componentconfigname);
+            } else {
+                unset_config($varname . '_partial', $componentconfigname);
+            }
+
+            $stats = [
+                'records' => (int)$numrecords,
+                'docs' => (int)$numdocs,
+                'ignored' => (int)$numdocsignored,
+                'batches' => (int)$batches,
+                'partial' => (bool)$partial,
+                'elapsed' => round(microtime(true) - $started, 2),
+                'lastindexeddoc' => (int)$lastindexeddoc,
+            ];
+            unset_config('active_reindex_area', 'search_typesense');
+            unset_config('active_reindex_progress', 'search_typesense');
+            set_config(
+                'last_reindex_summary',
+                json_encode(array_merge(['areaid' => $areaid, 'time' => $indexingend], $stats)),
+                'search_typesense'
+            );
+
+            return $stats;
+        } finally {
+            $this->infastreindex = false;
         }
-        if ($progress !== null) {
-            $options['progress'] = $progress;
+    }
+
+    /**
+     * Universal Primary-Key chunked + pre-joined context & batch file streamer for ALL \core_search\base_activity plugins.
+     *
+     * Automatically accelerates any core or third-party activity module (assign, quiz, feedback, page, resource,
+     * zoom, videotime, lti, customcert, forum, etc.) by:
+     * 1. Streaming {modulename} in 2,500-row primary-key (m.id) chunks instead of buffering the entire table in RAM.
+     * 2. Pre-joining {course_modules} and {context} in SQL to eliminate N per-row get_fast_modinfo() cache misses.
+     * 3. Running a single batch {files} query per chunk to attach files only to activities that actually have files.
+     *
+     * @param \core_search\base_activity $searcharea Activity search area instance.
+     * @param int $timelimit Optional time limit in seconds (0 = unlimited).
+     * @param float $started Microtime start timestamp.
+     * @param \core\progress\base|null $progress Optional Moodle progress tracker.
+     * @return array{records:int, docs:int, ignored:int, batches:int, partial:bool, elapsed:float, lastindexeddoc:int}
+     */
+    protected function fast_reindex_activity_area(
+        \core_search\base_activity $searcharea,
+        int $timelimit,
+        float $started,
+        ?\core\progress\base $progress = null
+    ): array {
+        global $DB;
+        $areaid = $searcharea->get_area_id();
+        [$componentconfigname, $varname] = $searcharea->get_config_var_name();
+        [$componentname, $areaname] = explode('-', $areaid, 2);
+        $modname = str_starts_with($componentname, 'mod_') ? substr($componentname, 4) : '';
+        $moduleid = ($modname !== '') ? (int)$DB->get_field('modules', 'id', ['name' => $modname]) : 0;
+
+        if ($moduleid <= 0 || !$DB->get_manager()->table_exists($modname)) {
+            return [
+                'records' => 0,
+                'docs' => 0,
+                'ignored' => 0,
+                'batches' => 0,
+                'partial' => false,
+                'elapsed' => 0.0,
+                'lastindexeddoc' => time(),
+            ];
         }
 
-        $iterator = new \core\dml\recordset_walk($recordset, [$searcharea, 'get_document'], $options);
-        [$numrecords, $numdocs, $numdocsignored, $lastindexeddoc, $partial, $batches] =
-            $this->add_documents($iterator, $searcharea, $options);
-        $recordset->close();
-
-        $this->area_index_complete($searcharea, $numdocs, false);
-
-        $indexingend = time();
-        set_config($varname . '_indexingstart', $indexingstart, $componentconfigname);
-        set_config($varname . '_indexingend', $indexingend, $componentconfigname);
-        set_config($varname . '_docsignored', $numdocsignored, $componentconfigname);
-        set_config($varname . '_docsprocessed', $numdocs, $componentconfigname);
-        set_config($varname . '_recordsprocessed', $numrecords, $componentconfigname);
-        if ($lastindexeddoc > 0) {
-            set_config($varname . '_lastindexrun', $lastindexeddoc, $componentconfigname);
+        $minmax = $DB->get_record_sql("SELECT MIN(id) AS minid, MAX(id) AS maxid FROM {{$modname}}");
+        if (!$minmax || empty($minmax->maxid)) {
+            $now = time();
+            set_config($varname . '_indexingend', $now, $componentconfigname);
+            set_config($varname . '_lastindexrun', $now, $componentconfigname);
+            unset_config($varname . '_partial', $componentconfigname);
+            unset_config($varname . '_pkcursor', $componentconfigname);
+            return [
+                'records' => 0,
+                'docs' => 0,
+                'ignored' => 0,
+                'batches' => 0,
+                'partial' => false,
+                'elapsed' => 0.0,
+                'lastindexeddoc' => $now,
+            ];
         }
+
+        $savedcursor = (int)get_config($componentconfigname, $varname . '_pkcursor');
+        $cursor = ($savedcursor > 0) ? $savedcursor : (int)$minmax->minid;
+        $maxid = (int)$minmax->maxid;
+        $chunksize = 2500;
+
+        $numrecords = ($savedcursor > 0) ? (int)get_config($componentconfigname, $varname . '_recordsprocessed') : 0;
+        $numdocs = ($savedcursor > 0) ? (int)get_config($componentconfigname, $varname . '_docsprocessed') : 0;
+        $numdocsignored = ($savedcursor > 0) ? (int)get_config($componentconfigname, $varname . '_docsignored') : 0;
+        $batches = 0;
+        $lastindexeddoc = (int)get_config($componentconfigname, $varname . '_lastindexrun');
+        $partial = false;
+        $stopat = ($timelimit > 0) ? ($started + $timelimit) : 0;
+        $fileindexing = $this->file_indexing_enabled() && $searcharea->uses_file_indexing();
+        $batchmax = $this->get_batch_max_documents();
+        $modifiedfield = $searcharea::MODIFIED_FIELD_NAME;
+
+        // Detect whether get_document() and attach_files() use the standard base_activity implementation.
+        $docdeclaring = (new \ReflectionMethod($searcharea, 'get_document'))->getDeclaringClass()->getName();
+        $directdoc = in_array($docdeclaring, [
+            \core_search\base_activity::class,
+            'mod_page\\search\\activity',
+            'mod_url\\search\\activity',
+        ], true);
+        $attachdeclaring = (new \ReflectionMethod($searcharea, 'attach_files'))->getDeclaringClass()->getName();
+        $directattach = ($attachdeclaring === \core_search\base_activity::class);
+        $fileareas = $fileindexing ? $searcharea->get_search_fileareas() : [];
+        $fs = $fileindexing ? get_file_storage() : null;
+
+        $preloadcols = \context_helper::get_preload_record_columns_sql('ctx');
+        $sql = "SELECT m.*, cm.id AS _ts_cmid, ctx.id AS _ts_ctxid, {$preloadcols}
+                  FROM {{$modname}} m
+                  JOIN {course_modules} cm ON cm.instance = m.id AND cm.course = m.course AND cm.module = :modid
+                  JOIN {context} ctx ON ctx.instanceid = cm.id AND ctx.contextlevel = :ctxlevel
+                       AND ctx.path IS NOT NULL AND ctx.depth > 0
+                 WHERE m.id >= :idstart AND m.id < :idend
+              ORDER BY m.course ASC, m.id ASC";
+
+        while ($cursor <= $maxid) {
+            if ($stopat > 0 && microtime(true) >= $stopat) {
+                $partial = true;
+                break;
+            }
+            $idend = $cursor + $chunksize;
+            $rs = $DB->get_recordset_sql($sql, [
+                'modid' => $moduleid,
+                'ctxlevel' => CONTEXT_MODULE,
+                'idstart' => $cursor,
+                'idend' => $idend,
+            ]);
+
+            $chunkdocs = [];
+            $chunkctxids = [];
+            foreach ($rs as $rec) {
+                $ctxid = (int)$rec->_ts_ctxid;
+                \context_helper::preload_from_record($rec);
+                if ($directdoc) {
+                    $doc = \core_search\document_factory::instance($rec->id, $componentname, $areaname);
+                    $doc->set('title', content_to_text((string)($rec->name ?? ''), false));
+                    $introfmt = (int)($rec->introformat ?? FORMAT_MOODLE);
+                    $introtxt = content_to_text((string)($rec->intro ?? ''), $introfmt);
+                    if ($docdeclaring === 'mod_page\\search\\activity') {
+                        $contentfmt = (int)($rec->contentformat ?? FORMAT_MOODLE);
+                        $doc->set('content', content_to_text((string)($rec->content ?? ''), $contentfmt));
+                        $doc->set('description1', $introtxt);
+                    } else if ($docdeclaring === 'mod_url\\search\\activity') {
+                        $doc->set('content', $introtxt);
+                        $doc->set('description1', (string)($rec->externalurl ?? ''));
+                    } else {
+                        $doc->set('content', $introtxt);
+                    }
+                    $doc->set('contextid', $ctxid);
+                    $doc->set('courseid', (int)($rec->course ?? SITEID));
+                    $doc->set('owneruserid', \core_search\manager::NO_OWNER_ID);
+                    $modified = isset($rec->{$modifiedfield}) ? (int)$rec->{$modifiedfield} : time();
+                    $doc->set('modified', $modified);
+                    $doc->set_is_new(true);
+                } else {
+                    $doc = $searcharea->get_document($rec, ['indexfiles' => $fileindexing, 'lastindexedtime' => 0]);
+                }
+
+                if (!$doc instanceof \core_search\document) {
+                    $numdocsignored++;
+                    continue;
+                }
+                $chunkdocs[] = $doc;
+                $chunkctxids[$ctxid] = $ctxid;
+                $numrecords++;
+                $modtime = (int)$doc->get('modified');
+                if ($modtime > $lastindexeddoc) {
+                    $lastindexeddoc = $modtime;
+                }
+            }
+            $rs->close();
+
+            // Batch-attach files for the chunk in 1 SQL query instead of N per-activity queries + get_fast_modinfo().
+            if ($fileindexing && $chunkdocs && !empty($fileareas)) {
+                if ($directattach && $chunkctxids) {
+                    [$ctxsql, $ctxparams] = $DB->get_in_or_equal(array_values($chunkctxids), SQL_PARAMS_NAMED, 'ctx');
+                    [$fasql, $faparams] = $DB->get_in_or_equal(array_values($fileareas), SQL_PARAMS_NAMED, 'fa');
+                    $hasfiles = array_flip($DB->get_fieldset_sql(
+                        "SELECT DISTINCT contextid
+                           FROM {files}
+                          WHERE contextid {$ctxsql}
+                            AND component = :comp
+                            AND filearea {$fasql}
+                            AND filename <> '.'",
+                        array_merge($ctxparams, $faparams, ['comp' => $componentname])
+                    ));
+                    foreach ($chunkdocs as $doc) {
+                        $dctxid = (int)$doc->get('contextid');
+                        if (isset($hasfiles[$dctxid])) {
+                            $files = $fs->get_area_files($dctxid, $componentname, $fileareas, false, '', false);
+                            foreach ($files as $file) {
+                                $doc->add_stored_file($file);
+                            }
+                        }
+                    }
+                } else {
+                    foreach ($chunkdocs as $doc) {
+                        $searcharea->attach_files($doc);
+                    }
+                }
+            }
+
+            foreach (array_chunk($chunkdocs, $batchmax) as $batch) {
+                [$processed, $failed, $bcount] = $this->add_document_batch($batch, $fileindexing);
+                $numdocs += $processed;
+                $numdocsignored += $failed;
+                $batches += $bcount;
+                if ($progress !== null) {
+                    $progress->progress();
+                }
+            }
+            unset($chunkdocs, $chunkctxids);
+
+            $cursor = $idend;
+            $now = time();
+            set_config($varname . '_pkcursor', $cursor, $componentconfigname);
+            set_config($varname . '_docsprocessed', $numdocs, $componentconfigname);
+            set_config($varname . '_recordsprocessed', $numrecords, $componentconfigname);
+            set_config($varname . '_docsignored', $numdocsignored, $componentconfigname);
+            set_config($varname . '_indexingend', $now, $componentconfigname);
+            if ($lastindexeddoc > 0) {
+                set_config($varname . '_lastindexrun', $lastindexeddoc, $componentconfigname);
+            }
+            $elapsed = max(0.01, round(microtime(true) - $started, 2));
+            set_config('active_reindex_progress', json_encode([
+                'areaid' => $areaid,
+                'docs' => $numdocs,
+                'records' => $numrecords,
+                'batches' => $batches,
+                'rate' => (int)round($numdocs / $elapsed),
+                'cursor' => $cursor,
+                'maxid' => $maxid,
+                'updated' => $now,
+            ]), 'search_typesense');
+        }
+
+        $now = time();
         if ($partial) {
             set_config($varname . '_partial', 1, $componentconfigname);
         } else {
             unset_config($varname . '_partial', $componentconfigname);
+            unset_config($varname . '_pkcursor', $componentconfigname);
+            set_config($varname . '_lastindexrun', max($lastindexeddoc, $now), $componentconfigname);
+        }
+
+        return [
+            'records' => (int)$numrecords,
+            'docs' => (int)$numdocs,
+            'ignored' => (int)$numdocsignored,
+            'batches' => (int)$batches,
+            'partial' => (bool)$partial,
+            'elapsed' => round(microtime(true) - $started, 2),
+            'lastindexeddoc' => max($lastindexeddoc, $now),
+        ];
+    }
+
+    /**
+     * Stream mod_forum-post in 5,000-row primary-key (fp.id) chunks with pre-joined discussions, forums, and contexts.
+     *
+     * @param \core_search\base $searcharea Forum post search area instance.
+     * @param int $timelimit Optional time limit in seconds (0 = unlimited).
+     * @param float $started Microtime start timestamp.
+     * @param \core\progress\base|null $progress Optional Moodle progress tracker.
+     * @return array{records:int, docs:int, ignored:int, batches:int, partial:bool, elapsed:float, lastindexeddoc:int}
+     */
+    protected function fast_reindex_forum_post_area(
+        \core_search\base $searcharea,
+        int $timelimit,
+        float $started,
+        ?\core\progress\base $progress = null
+    ): array {
+        global $DB;
+        $areaid = $searcharea->get_area_id();
+        [$componentconfigname, $varname] = $searcharea->get_config_var_name();
+        $moduleid = (int)$DB->get_field('modules', 'id', ['name' => 'forum']);
+        $minmax = $DB->get_record_sql('SELECT MIN(id) AS minid, MAX(id) AS maxid FROM {forum_posts}');
+        if ($moduleid <= 0 || !$minmax || empty($minmax->maxid)) {
+            $now = time();
+            set_config($varname . '_indexingend', $now, $componentconfigname);
+            set_config($varname . '_lastindexrun', $now, $componentconfigname);
+            unset_config($varname . '_partial', $componentconfigname);
+            unset_config($varname . '_pkcursor', $componentconfigname);
+            return [
+                'records' => 0,
+                'docs' => 0,
+                'ignored' => 0,
+                'batches' => 0,
+                'partial' => false,
+                'elapsed' => 0.0,
+                'lastindexeddoc' => $now,
+            ];
+        }
+
+        $savedcursor = (int)get_config($componentconfigname, $varname . '_pkcursor');
+        $cursor = ($savedcursor > 0) ? $savedcursor : (int)$minmax->minid;
+        $maxid = (int)$minmax->maxid;
+        $chunksize = 5000;
+
+        $numrecords = ($savedcursor > 0) ? (int)get_config($componentconfigname, $varname . '_recordsprocessed') : 0;
+        $numdocs = ($savedcursor > 0) ? (int)get_config($componentconfigname, $varname . '_docsprocessed') : 0;
+        $numdocsignored = ($savedcursor > 0) ? (int)get_config($componentconfigname, $varname . '_docsignored') : 0;
+        $batches = 0;
+        $lastindexeddoc = (int)get_config($componentconfigname, $varname . '_lastindexrun');
+        $partial = false;
+        $stopat = ($timelimit > 0) ? ($started + $timelimit) : 0;
+        $fileindexing = $this->file_indexing_enabled() && $searcharea->uses_file_indexing();
+        $batchmax = $this->get_batch_max_documents();
+        $fs = $fileindexing ? get_file_storage() : null;
+
+        $sql = "SELECT fp.id, fp.discussion, fp.created, fp.modified, fp.userid, fp.subject, fp.message, fp.messageformat,
+                       f.id AS forumid, f.course AS courseid, fd.groupid AS groupid, ctx.id AS _ts_ctxid
+                  FROM {forum_posts} fp
+                  JOIN {forum_discussions} fd ON fd.id = fp.discussion
+                  JOIN {forum} f ON f.id = fd.forum
+                  JOIN {course_modules} cm ON cm.instance = f.id AND cm.course = f.course AND cm.module = :modid
+                  JOIN {context} ctx ON ctx.instanceid = cm.id AND ctx.contextlevel = :ctxlevel
+                       AND ctx.path IS NOT NULL AND ctx.depth > 0
+                 WHERE fp.id >= :idstart AND fp.id < :idend
+              ORDER BY fp.id ASC";
+
+        while ($cursor <= $maxid) {
+            if ($stopat > 0 && microtime(true) >= $stopat) {
+                $partial = true;
+                break;
+            }
+            $idend = $cursor + $chunksize;
+            $rs = $DB->get_recordset_sql($sql, [
+                'modid' => $moduleid,
+                'ctxlevel' => CONTEXT_MODULE,
+                'idstart' => $cursor,
+                'idend' => $idend,
+            ]);
+
+            $chunkdocs = [];
+            $postids = [];
+            foreach ($rs as $rec) {
+                $postid = (int)$rec->id;
+                $doc = \core_search\document_factory::instance($postid, 'mod_forum', 'post');
+                $doc->set('title', content_to_text((string)($rec->subject ?? ''), false));
+                $doc->set('content', content_to_text((string)($rec->message ?? ''), (int)($rec->messageformat ?? FORMAT_MOODLE)));
+                $doc->set('contextid', (int)$rec->_ts_ctxid);
+                $doc->set('courseid', (int)$rec->courseid);
+                $doc->set('userid', (int)$rec->userid);
+                $doc->set('owneruserid', \core_search\manager::NO_OWNER_ID);
+                $doc->set('modified', (int)$rec->modified);
+                if ((int)$rec->groupid > 0) {
+                    $doc->set('groupid', (int)$rec->groupid);
+                }
+                $doc->set_is_new(true);
+
+                $chunkdocs[$postid] = $doc;
+                $postids[] = $postid;
+                $numrecords++;
+                if ((int)$rec->modified > $lastindexeddoc) {
+                    $lastindexeddoc = (int)$rec->modified;
+                }
+            }
+            $rs->close();
+
+            if ($fileindexing && $postids) {
+                [$pidsql, $pidparams] = $DB->get_in_or_equal($postids, SQL_PARAMS_NAMED, 'pid');
+                $postswithfiles = $DB->get_fieldset_sql(
+                    "SELECT DISTINCT itemid
+                       FROM {files}
+                      WHERE component = 'mod_forum'
+                        AND filearea IN ('attachment', 'post')
+                        AND itemid {$pidsql}
+                        AND filename <> '.'",
+                    $pidparams
+                );
+                foreach ($postswithfiles as $pid) {
+                    $pid = (int)$pid;
+                    if (!isset($chunkdocs[$pid])) {
+                        continue;
+                    }
+                    $dctxid = (int)$chunkdocs[$pid]->get('contextid');
+                    foreach (['attachment', 'post'] as $farea) {
+                        $files = $fs->get_area_files($dctxid, 'mod_forum', $farea, $pid, '', false);
+                        foreach ($files as $file) {
+                            $chunkdocs[$pid]->add_stored_file($file);
+                        }
+                    }
+                }
+            }
+
+            foreach (array_chunk(array_values($chunkdocs), $batchmax) as $batch) {
+                [$processed, $failed, $bcount] = $this->add_document_batch($batch, $fileindexing);
+                $numdocs += $processed;
+                $numdocsignored += $failed;
+                $batches += $bcount;
+                if ($progress !== null) {
+                    $progress->progress();
+                }
+            }
+            unset($chunkdocs, $postids);
+
+            $cursor = $idend;
+            $now = time();
+            set_config($varname . '_pkcursor', $cursor, $componentconfigname);
+            set_config($varname . '_docsprocessed', $numdocs, $componentconfigname);
+            set_config($varname . '_recordsprocessed', $numrecords, $componentconfigname);
+            set_config($varname . '_docsignored', $numdocsignored, $componentconfigname);
+            set_config($varname . '_indexingend', $now, $componentconfigname);
+            if ($lastindexeddoc > 0) {
+                set_config($varname . '_lastindexrun', $lastindexeddoc, $componentconfigname);
+            }
+            $elapsed = max(0.01, round(microtime(true) - $started, 2));
+            set_config('active_reindex_progress', json_encode([
+                'areaid' => $areaid,
+                'docs' => $numdocs,
+                'records' => $numrecords,
+                'batches' => $batches,
+                'rate' => (int)round($numdocs / $elapsed),
+                'cursor' => $cursor,
+                'maxid' => $maxid,
+                'updated' => $now,
+            ]), 'search_typesense');
+        }
+
+        $now = time();
+        if ($partial) {
+            set_config($varname . '_partial', 1, $componentconfigname);
+        } else {
+            unset_config($varname . '_partial', $componentconfigname);
+            unset_config($varname . '_pkcursor', $componentconfigname);
+            set_config($varname . '_lastindexrun', max($lastindexeddoc, $now), $componentconfigname);
+        }
+
+        return [
+            'records' => (int)$numrecords,
+            'docs' => (int)$numdocs,
+            'ignored' => (int)$numdocsignored,
+            'batches' => (int)$batches,
+            'partial' => (bool)$partial,
+            'elapsed' => round(microtime(true) - $started, 2),
+            'lastindexeddoc' => max($lastindexeddoc, $now),
+        ];
+    }
+
+    /**
+     * Stream core_message search areas in primary-key (m.id) chunks of 5,000 rows into NDJSON batches.
+     *
+     * Bypasses Moodle core's unindexed ORDER BY m.timecreated ASC full-table scan (which stalls on
+     * multi-million-row {messages} tables) and pre-joins {user} and {context} to eliminate 2N per-row queries.
+     *
+     * @param \core_message\search\base_message $searcharea Message search area (received or sent).
+     * @param int $timelimit Optional time limit in seconds (0 = unlimited).
+     * @param float $started Microtime start timestamp.
+     * @return array{records:int, docs:int, ignored:int, batches:int, partial:bool, elapsed:float}
+     */
+    protected function fast_reindex_message_area(
+        \core_message\search\base_message $searcharea,
+        int $timelimit,
+        float $started
+    ): array {
+        global $DB;
+        $areaid = $searcharea->get_area_id();
+        [$componentconfigname, $varname] = $searcharea->get_config_var_name();
+        $issent = ($areaid === 'core_message-message_sent');
+        [$componentname, $areaname] = explode('-', $areaid, 2);
+
+        $minmax = $DB->get_record_sql('SELECT MIN(id) AS minid, MAX(id) AS maxid FROM {messages}');
+        if (!$minmax || empty($minmax->maxid)) {
+            $now = time();
+            set_config($varname . '_indexingend', $now, $componentconfigname);
+            set_config($varname . '_lastindexrun', $now, $componentconfigname);
+            unset_config($varname . '_partial', $componentconfigname);
+            unset_config($varname . '_pkcursor', $componentconfigname);
+            return ['records' => 0, 'docs' => 0, 'ignored' => 0, 'batches' => 0, 'partial' => false, 'elapsed' => 0.0];
+        }
+
+        $savedcursor = (int)get_config($componentconfigname, $varname . '_pkcursor');
+        $cursor = ($savedcursor > 0) ? $savedcursor : (int)$minmax->minid;
+        $maxid = (int)$minmax->maxid;
+        $chunksize = 5000;
+
+        $numrecords = ($savedcursor > 0) ? (int)get_config($componentconfigname, $varname . '_recordsprocessed') : 0;
+        $numdocs = ($savedcursor > 0) ? (int)get_config($componentconfigname, $varname . '_docsprocessed') : 0;
+        $numdocsignored = ($savedcursor > 0) ? (int)get_config($componentconfigname, $varname . '_docsignored') : 0;
+        $batches = 0;
+        $lastindexeddoc = (int)get_config($componentconfigname, $varname . '_lastindexrun');
+        $partial = false;
+        $stopat = ($timelimit > 0) ? ($started + $timelimit) : 0;
+        $batchmax = 500;
+        $currentbatch = [];
+
+        $ownerfield = $issent ? 'm.useridfrom' : 'mcm.userid';
+        $sql = "SELECT m.id, m.useridfrom, m.subject, m.smallmessage, m.timecreated,
+                       mcm.userid AS useridto, uctx.id AS ownerctxid
+                  FROM {messages} m
+                  JOIN {message_conversations} mc ON mc.id = m.conversationid
+                  JOIN {message_conversation_members} mcm ON mcm.conversationid = mc.id AND mcm.userid != m.useridfrom
+                  JOIN {user} uowner ON uowner.id = {$ownerfield} AND uowner.deleted = 0
+                  JOIN {context} uctx ON uctx.contextlevel = :ctxuser AND uctx.instanceid = uowner.id
+                 WHERE m.id >= :idstart AND m.id < :idend
+                   AND {$ownerfield} != :noreplyuser
+                   AND {$ownerfield} != :supportuser
+              ORDER BY m.id ASC";
+
+        while ($cursor <= $maxid) {
+            if ($stopat > 0 && microtime(true) >= $stopat) {
+                $partial = true;
+                break;
+            }
+            $idend = $cursor + $chunksize;
+            $rs = $DB->get_recordset_sql($sql, [
+                'ctxuser' => CONTEXT_USER,
+                'idstart' => $cursor,
+                'idend' => $idend,
+                'noreplyuser' => \core_user::NOREPLY_USER,
+                'supportuser' => \core_user::SUPPORT_USER,
+            ]);
+            foreach ($rs as $rec) {
+                $owneruserid = $issent ? (int)$rec->useridfrom : (int)$rec->useridto;
+                $otheruserid = $issent ? (int)$rec->useridto : (int)$rec->useridfrom;
+                $doc = \core_search\document_factory::instance($rec->id, $componentname, $areaname);
+                $doc->set('title', content_to_text((string)($rec->subject ?? ''), false));
+                $doc->set('itemid', (int)$rec->id);
+                $doc->set('content', content_to_text((string)($rec->smallmessage ?? ''), false));
+                $doc->set('contextid', (int)$rec->ownerctxid);
+                $doc->set('courseid', SITEID);
+                $doc->set('owneruserid', $owneruserid);
+                $doc->set('userid', $otheruserid);
+                $doc->set('modified', (int)$rec->timecreated);
+                $doc->set_is_new(true);
+
+                $currentbatch[] = $doc;
+                $numrecords++;
+                if ((int)$rec->timecreated > $lastindexeddoc) {
+                    $lastindexeddoc = (int)$rec->timecreated;
+                }
+                if (count($currentbatch) >= $batchmax) {
+                    [$processed, $failed, $bcount] = $this->add_document_batch($currentbatch, false);
+                    $numdocs += $processed;
+                    $numdocsignored += $failed;
+                    $batches += $bcount;
+                    $currentbatch = [];
+                }
+            }
+            $rs->close();
+
+            if ($currentbatch) {
+                [$processed, $failed, $bcount] = $this->add_document_batch($currentbatch, false);
+                $numdocs += $processed;
+                $numdocsignored += $failed;
+                $batches += $bcount;
+                $currentbatch = [];
+            }
+
+            $cursor = $idend;
+            $now = time();
+            set_config($varname . '_pkcursor', $cursor, $componentconfigname);
+            set_config($varname . '_docsprocessed', $numdocs, $componentconfigname);
+            set_config($varname . '_recordsprocessed', $numrecords, $componentconfigname);
+            set_config($varname . '_docsignored', $numdocsignored, $componentconfigname);
+            set_config($varname . '_indexingend', $now, $componentconfigname);
+            if ($lastindexeddoc > 0) {
+                set_config($varname . '_lastindexrun', $lastindexeddoc, $componentconfigname);
+            }
+            $elapsed = max(0.01, round(microtime(true) - $started, 2));
+            set_config('active_reindex_progress', json_encode([
+                'areaid' => $areaid,
+                'docs' => $numdocs,
+                'records' => $numrecords,
+                'batches' => $batches,
+                'rate' => (int)round($numdocs / $elapsed),
+                'cursor' => $cursor,
+                'maxid' => $maxid,
+                'updated' => $now,
+            ]), 'search_typesense');
+        }
+
+        $now = time();
+        if ($partial) {
+            set_config($varname . '_partial', 1, $componentconfigname);
+        } else {
+            unset_config($varname . '_partial', $componentconfigname);
+            unset_config($varname . '_pkcursor', $componentconfigname);
+            set_config($varname . '_lastindexrun', max($lastindexeddoc, $now), $componentconfigname);
         }
 
         return [
@@ -654,7 +1595,7 @@ class engine extends \core_search\engine {
             try {
                 $client->delete_collection($collection);
             } catch (\moodle_exception $e) {
-                // Already gone; ignore.
+                unset($e);
             }
             $this->ensure_collection();
         }
