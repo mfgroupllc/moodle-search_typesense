@@ -129,6 +129,19 @@ class candidate_engine extends engine {
             $maxpriority = ($areas === ['core_course-course']) ? $target : min(5, $target);
             $documents = $this->prepend_priority_courses($filters, $initialscope, $seen, $started, $maxpriority);
         }
+        if (
+            $page === 0 && $isrelevancesort && in_array(user_profile_fields::USER_AREA_ID, $areas, true) &&
+                trim((string)($filters->q ?? '')) !== '' && trim((string)$filters->q) !== '*' &&
+                count($documents) < $target
+        ) {
+            $maxuserpriority = ($areas === [user_profile_fields::USER_AREA_ID])
+                ? ($target - count($documents))
+                : min(5, $target - count($documents));
+            $userdocs = $this->prepend_priority_users($filters, $seen, $started, $maxuserpriority);
+            if ($userdocs) {
+                $documents = array_merge($documents, $userdocs);
+            }
+        }
 
         while (count($documents) < $target && $scanned < static::MAX_CANDIDATES) {
             if (microtime(true) - $started >= static::TIME_BUDGET) {
@@ -282,6 +295,7 @@ class candidate_engine extends engine {
             // Require all search terms to match so adding terms narrows results rather than expanding via OR fallback.
             $params['drop_tokens_threshold'] = 0;
             $params['prioritize_token_position'] = 'true';
+            $params['max_candidates'] = 200;
             if ($iscourseonly) {
                 $params['query_by_weights'] = '12,10,3,1';
             }
@@ -397,6 +411,150 @@ class candidate_engine extends engine {
         }
 
         $access = $this->accessmanager->candidate_access(array_values($courseids), $coursefilters);
+        $documents = [];
+        foreach ($ordered as $data) {
+            if (microtime(true) - $started >= static::TIME_BUDGET) {
+                break;
+            }
+            if (!$this->context_allows($data, $access)) {
+                continue;
+            }
+            try {
+                $itemaccess = $area->check_access($data['itemid']);
+                if ($itemaccess === \core_search\manager::ACCESS_GRANTED) {
+                    $seen[$data['id']] = true;
+                    $documents[] = $this->to_document($area, $data);
+                }
+            } catch (\dml_exception $e) {
+                continue;
+            }
+            if (count($documents) >= $maxlimit) {
+                break;
+            }
+        }
+        return $documents;
+    }
+
+    /**
+     * Surface matching user profiles (by name, ID number / student number, email, or phone) to the top of results.
+     *
+     * Runs an exact-prefix pass (num_typos=0, max_candidates=500) first so numeric ID prefixes like "9999" match
+     * student ID numbers ("9999999998") directly without being buried under 1-typo phone numbers or forum posts,
+     * and falls back to typo-tolerant matching for name searches (such as "Sam Hutchens" -> "Sam Hutchins").
+     *
+     * @param \stdClass $filters Search filters.
+     * @param array $seen Reference to seen document IDs map.
+     * @param float $started Request start microtime.
+     * @param int $maxlimit Maximum priority user documents to return.
+     * @return \core_search\document[]
+     */
+    protected function prepend_priority_users(
+        \stdClass $filters,
+        array &$seen,
+        float $started,
+        int $maxlimit
+    ): array {
+        global $USER;
+        if ($maxlimit <= 0 || microtime(true) - $started >= static::TIME_BUDGET) {
+            return [];
+        }
+        $area = $this->get_search_area(user_profile_fields::USER_AREA_ID);
+        if (!$area) {
+            return [];
+        }
+        $clauses = [
+            'areaid:[`' . user_profile_fields::USER_AREA_ID . '`]',
+            '(owneruserid:0 || owneruserid:' . (int)$USER->id . ')',
+        ];
+        if (!empty($filters->timestart)) {
+            $clauses[] = 'modified:>=' . (int)$filters->timestart;
+        }
+        if (!empty($filters->timeend)) {
+            $clauses[] = 'modified:<=' . (int)$filters->timeend;
+        }
+        $rawq = trim((string)($filters->q ?? ''));
+        $normq = trim((string)preg_replace('/_+/', ' ', $rawq));
+        $effectiveq = $normq !== '' ? $normq : $rawq;
+        if ($effectiveq === '' || $effectiveq === '*') {
+            return [];
+        }
+
+        $plugin = !empty($this->pluginname) ? $this->pluginname : 'search_typesense';
+        $canidentity = user_profile_fields::can_current_user_query_identity($plugin);
+        $queryby = $canidentity
+            ? 'title,useridentity,description1,description2,content'
+            : 'title,description1,description2,content';
+        $weights = $canidentity ? '12,12,4,4,1' : '12,4,4,1';
+
+        $baseparams = [
+            'q' => $effectiveq,
+            'query_by' => $queryby,
+            'query_by_weights' => $weights,
+            'drop_tokens_threshold' => 0,
+            'prioritize_token_position' => 'true',
+            'per_page' => 20,
+            'page' => 1,
+            'prefix' => 'true',
+            'max_candidates' => 500,
+            'exclude_fields' => 'embedding',
+            'filter_by' => implode(' && ', $clauses),
+        ];
+
+        $raws = [];
+        try {
+            $exactparams = $baseparams;
+            $exactparams['num_typos'] = 0;
+            $resp0 = $this->get_client()->search($this->get_collection_name(), $exactparams);
+            if (!empty($resp0['hits']) && is_array($resp0['hits'])) {
+                $raws = $resp0['hits'];
+            }
+            if (count($raws) < $maxlimit) {
+                $resp1 = $this->get_client()->search($this->get_collection_name(), $baseparams);
+                if (!empty($resp1['hits']) && is_array($resp1['hits'])) {
+                    $raws = array_merge($raws, $resp1['hits']);
+                }
+            }
+        } catch (\Throwable $e) {
+            return [];
+        }
+        if (!$raws) {
+            return [];
+        }
+
+        $userfilters = clone $filters;
+        $userfilters->scopecourseids = null;
+        $userfilters->scope = 'all';
+
+        $qlower = \core_text::strtolower($effectiveq);
+        $tier0 = [];
+        $tier1 = [];
+        foreach ($raws as $hit) {
+            $data = $this->candidate_data($hit);
+            if ($data === null || isset($seen[$data['id']])) {
+                continue;
+            }
+            if (!$this->matches_filters($data, $userfilters, null, [user_profile_fields::USER_AREA_ID])) {
+                continue;
+            }
+            $doc = $hit['document'] ?? [];
+            $titlelower = \core_text::strtolower((string)($doc['title'] ?? ''));
+            $identlower = \core_text::strtolower((string)($doc['useridentity'] ?? ''));
+            $firstidenttoken = strtok($identlower, ' ');
+            $isdirectidortitle = (strpos($titlelower, $qlower) === 0)
+                || ($firstidenttoken !== false && strpos($firstidenttoken, $qlower) === 0);
+            if ($isdirectidortitle) {
+                $tier0[$data['id']] = $data;
+            } else if (!isset($tier0[$data['id']])) {
+                $tier1[$data['id']] = $data;
+            }
+        }
+        $ordered = array_values($tier0) + array_values($tier1);
+        $ordered = array_merge(array_values($tier0), array_values($tier1));
+        if (!$ordered) {
+            return [];
+        }
+
+        $access = $this->accessmanager->candidate_access([(int)SITEID], $userfilters);
         $documents = [];
         foreach ($ordered as $data) {
             if (microtime(true) - $started >= static::TIME_BUDGET) {
