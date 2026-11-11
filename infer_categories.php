@@ -57,6 +57,8 @@ if ($apply && data_submitted()) {
     );
 }
 
+\core\session\manager::write_close();
+
 $inferred = course_scope::infer_current_categories();
 $currentroots = array_fill_keys(course_scope::roots(), true);
 

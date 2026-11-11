@@ -74,6 +74,7 @@ if (empty($queuedtasks) && $activearea !== '') {
 
 // Handle lightweight AJAX status polling (updates progress bar and table cells without full-page reload).
 if ($action === 'ajaxstatus') {
+    \core\session\manager::write_close();
     $areacounts = $tsengine->get_area_document_counts();
     $searchareas = \core_search\manager::get_search_areas_list(true);
     $searchmanager = null;
@@ -248,14 +249,19 @@ if (in_array($action, $redirectactions, true) && data_submitted()) {
     }
 }
 
+if ($action === 'runnow' && $areaid !== '' && data_submitted()) {
+    require_sesskey();
+}
+// Release the Moodle session lock before rendering or running inline NDJSON streaming so other tabs/AJAX never block.
+\core\session\manager::write_close();
+
 echo $OUTPUT->header();
 echo admin_nav::render('reindex');
 echo $OUTPUT->heading(get_string('reindexareas_title', 'search_typesense'));
 echo html_writer::tag('p', get_string('reindexareas_desc', 'search_typesense'), ['class' => 'text-muted mb-3']);
 
-// Execute synchronous fast NDJSON re-index for a single area when requested.
+// Execute synchronous fast NDJSON re-index for a single area when requested (capped at 25s with automatic background handoff).
 if ($action === 'runnow' && $areaid !== '' && data_submitted()) {
-    require_sesskey();
     $targetarea = \core_search\manager::get_search_area($areaid);
     if (!$targetarea || !$targetarea->supports_get_document_recordset()) {
         echo $OUTPUT->notification(get_string('invalidrequest', 'error'), 'notifyproblem');
@@ -269,7 +275,7 @@ if ($action === 'runnow' && $areaid !== '' && data_submitted()) {
         );
         $progress = new \core\progress\display_if_slow('');
         try {
-            $stats = $tsengine->fast_reindex_area($targetarea, (bool)$deletefirst, 0, $progress);
+            $stats = $tsengine->fast_reindex_area($targetarea, (bool)$deletefirst, 25, $progress);
             $summary = (object)[
                 'area' => s($targetarea->get_visible_name()),
                 'docs' => $stats['docs'],
@@ -278,10 +284,18 @@ if ($action === 'runnow' && $areaid !== '' && data_submitted()) {
                 'ignored' => $stats['ignored'],
                 'elapsed' => $stats['elapsed'],
             ];
-            echo $OUTPUT->notification(
-                get_string('reindexareas_completed', 'search_typesense', $summary),
-                'notifysuccess'
-            );
+            if (!empty($stats['partial'])) {
+                engine::enqueue_area_reindex_task($areaid, false, 0);
+                echo $OUTPUT->notification(
+                    get_string('reindexareas_completed_partial_bg', 'search_typesense', $summary),
+                    'notifysuccess'
+                );
+            } else {
+                echo $OUTPUT->notification(
+                    get_string('reindexareas_completed', 'search_typesense', $summary),
+                    'notifysuccess'
+                );
+            }
         } catch (\Throwable $e) {
             echo $OUTPUT->notification(s($e->getMessage()), 'notifyproblem');
         }

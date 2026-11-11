@@ -63,6 +63,8 @@ if (!manager::is_global_search_enabled()) {
     exit;
 }
 
+\core\session\manager::write_close();
+
 // Keep core's engine readiness checks and its form. Neither performs a search.
 $search = manager::instance(true, true);
 $engine = $search->get_engine();

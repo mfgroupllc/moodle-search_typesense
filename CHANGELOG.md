@@ -4,6 +4,16 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.7] - 2026-11-10 (`2026111004`)
+
+### Fixed & Improved
+- **Eliminated Moodle Session Lock Contention (`reindex_areas.php`, `infer_categories.php`, `query.php`):**
+  - Added `\core\session\manager::write_close()` prior to Typesense facet queries, AJAX status polling (`action=ajaxstatus`), inline NDJSON streaming (`action=runnow`), category inference (`infer_categories.php`), and search/AI Overview execution (`query.php`) so long-running requests never lock the user's Moodle browser session (`Cannot obtain session lock`).
+- **25-Second Inline Time Cap with Automatic Background Handoff (`reindex_areas.php`):**
+  - Capped synchronous **Run Inline** (`action=runnow`) executions at 25 seconds (well below Apache `mod_proxy_fcgi`'s 60s timeout) and automatically hands off any remaining PK chunks (`$stats['partial']`) to the background `fast_reindex_area_adhoc_task` queue.
+
+---
+
 ## [1.1.6] - 2026-11-10 (`2026111003`)
 
 ### Fixed & Improved

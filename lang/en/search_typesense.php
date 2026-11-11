@@ -108,6 +108,7 @@ $string['reindexareas_btn_runnow'] = 'Run Inline';
 $string['reindexareas_col_areaid'] = 'Area ID';
 $string['reindexareas_col_tsdocs'] = 'Docs in Typesense';
 $string['reindexareas_completed'] = 'Fast NDJSON re-index completed for {$a->area}: indexed {$a->docs} documents from {$a->records} records across {$a->batches} batch(es) in {$a->elapsed}s ({$a->ignored} ignored).';
+$string['reindexareas_completed_partial_bg'] = 'Indexed {$a->docs} documents ({$a->records} records across {$a->batches} batches) in {$a->elapsed}s for {$a->area}. Because this is a large search area, the remaining records have been automatically queued in the background (NDJSON Ad-hoc Task) to avoid web server timeouts.';
 $string['reindexareas_contexts_fixed'] = 'Rebuilt all missing Moodle context paths successfully.';
 $string['reindexareas_contexts_fixed_count'] = 'Context repair complete: resolved {$a->repaired} unbuilt/orphaned context row(s) ({$a->before} before → {$a->after} remaining).';
 $string['reindexareas_desc'] = 'Re-index individual Moodle search areas directly into Typesense using Primary-Key chunked SQL joins, bulk NDJSON batches, and raised memory limits (MEMORY_HUGE). Use "Run in Background (NDJSON)" to execute via Moodle CLI cron ad-hoc tasks with zero web server / proxy timeouts.';
