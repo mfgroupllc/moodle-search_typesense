@@ -4,6 +4,19 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.6] - 2026-11-10 (`2026111003`)
+
+### Fixed & Improved
+- **Nested Admin Settings Category (`settings.php`, `lang/en/search_typesense.php`):**
+  - Grouped all Typesense admin settings pages (`Connection & Scopes`, `Content, Users & Integrations`, `Fast Area Re-index (NDJSON)`, `Active Course Categories`, and `Typesense Pro (AI & InstantSearch)`) inside a dedicated **Typesense** (`search_typesense_category`) category under **Site administration $\rightarrow$ Plugins $\rightarrow$ Search**, matching Moodle core's **Elasticsearch** (`search_elastic`) and **Atto HTML editor** (`editor_atto`) layout.
+- **Fixed `Dec 31, 1969` Display in "Newest Document Indexed" (`reindex_areas.php`):**
+  - Fixed double-formatting of `$cfg->lastindexrun` on `reindex_areas.php` where `\core_search\manager::get_areas_config()` already returns a formatted date string (or `'Never'`), preventing `(int)$cfg->lastindexrun` from evaluating to `0` (`Wednesday, December 31, 1969, 6:00 PM`).
+- **Fixed Inline Progress Tracker Lifecycle & Added Live AJAX Status Updates (`\search_typesense\engine::fast_reindex_area`, `reindex_areas.php`):**
+  - Added `$progress->start_progress()` and `$progress->end_progress()` (in `finally`) inside `engine::fast_reindex_area()` so running an inline **Run Inline** on PK-chunked activity/forum search areas never triggers `Coding error detected: progress() without start_progress`.
+  - Replaced the 5-second full-page reload on `reindex_areas.php` with an asynchronous AJAX status poller (`action=ajaxstatus`), an animated Bootstrap progress bar, and live in-place updates for the **Docs in Typesense**, **Newest Document Indexed**, and **Last Run** columns.
+
+---
+
 ## [1.1.5] - 2026-11-10 (`2026111002`)
 
 ### Added & Refined

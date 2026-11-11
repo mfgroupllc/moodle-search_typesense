@@ -27,6 +27,20 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+if (isset($ADMIN) && $ADMIN->locate('searchplugins')) {
+    if (!$ADMIN->locate('search_typesense_category')) {
+        $ADMIN->add(
+            'searchplugins',
+            new admin_category('search_typesense_category', new lang_string('pluginname', 'search_typesense'))
+        );
+    }
+    $settings = new admin_settingpage(
+        'searchtypesense',
+        new lang_string('nav_connection', 'search_typesense'),
+        'moodle/site:config'
+    );
+}
+
 if ($ADMIN->fulltree) {
     // 1. Sub-page 1 (Main): Server Connection & Course Scopes.
     $connnav = during_initial_install() ? '' : \search_typesense\admin_nav::render('connection');
@@ -234,11 +248,12 @@ if (isset($ADMIN) && $ADMIN->locate('searchplugins')) {
             }
         }
 
-        $ADMIN->add('searchplugins', $contentsettings);
+        $ADMIN->add('search_typesense_category', $settings);
+        $ADMIN->add('search_typesense_category', $contentsettings);
     }
 
     if (!$ADMIN->locate('searchtypesense_reindex')) {
-        $ADMIN->add('searchplugins', new admin_externalpage(
+        $ADMIN->add('search_typesense_category', new admin_externalpage(
             'searchtypesense_reindex',
             new lang_string('reindexareas_nav', 'search_typesense'),
             new moodle_url('/search/engine/typesense/reindex_areas.php'),
@@ -247,11 +262,13 @@ if (isset($ADMIN) && $ADMIN->locate('searchplugins')) {
     }
 
     if (!$ADMIN->locate('searchtypesense_infer')) {
-        $ADMIN->add('searchplugins', new admin_externalpage(
+        $ADMIN->add('search_typesense_category', new admin_externalpage(
             'searchtypesense_infer',
             new lang_string('infercategories_nav', 'search_typesense'),
             new moodle_url('/search/engine/typesense/infer_categories.php'),
             'moodle/site:config'
         ));
     }
+
+    $settings = null;
 }

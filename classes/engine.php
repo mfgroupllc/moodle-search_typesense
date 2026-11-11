@@ -764,11 +764,16 @@ class engine extends \core_search\engine {
         global $DB;
         \core_php_time_limit::raise(0);
         $this->infastreindex = true;
+        $areaid = $searcharea->get_area_id();
+        $progressstarted = false;
         try {
+            if ($progress !== null) {
+                $progress->start_progress($searcharea->get_visible_name());
+                $progressstarted = true;
+            }
             $this->index_starting(false);
             $this->area_index_starting($searcharea, false);
 
-            $areaid = $searcharea->get_area_id();
             [$componentconfigname, $varname] = $searcharea->get_config_var_name();
 
             if ($deletefirst) {
@@ -968,6 +973,17 @@ class engine extends \core_search\engine {
 
             return $stats;
         } finally {
+            if ($progressstarted && $progress !== null) {
+                try {
+                    $progress->end_progress();
+                } catch (\Throwable $e) {
+                    debugging('Progress end skipped: ' . $e->getMessage(), DEBUG_DEVELOPER);
+                }
+            }
+            if ((string)get_config('search_typesense', 'active_reindex_area') === $areaid) {
+                unset_config('active_reindex_area', 'search_typesense');
+                unset_config('active_reindex_progress', 'search_typesense');
+            }
             $this->infastreindex = false;
         }
     }
