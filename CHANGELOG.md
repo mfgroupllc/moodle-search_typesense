@@ -4,6 +4,18 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.5] - 2026-11-10 (`2026111002`)
+
+### Added & Refined
+- **Strict `AND` Multi-Term Search Narrowing (`\search_typesense\candidate_engine`):**
+  - Configured `drop_tokens_threshold => 0` and `prioritize_token_position => 'true'` in `candidate_params()` and `prepend_priority_courses()`, with `query_by_weights => '12,10,3,1'` on `title,description2,description1,content` for Course searches so adding additional search terms (e.g. `"PB101 points"`, `"PA221 points"`) strictly narrows results to documents containing **all** terms rather than falling back to `OR`.
+- **Fail-Fast HTTP Connect Timeout (`\search_typesense\client`):**
+  - Added a 2-second `CURLOPT_CONNECTTIMEOUT` so Moodle admin pages never block if the Typesense server is rebooting or unreachable.
+- **Pro Extension Hooks for Smart Message Filtering & Guided Discovery (`\search_typesense\pro_bridge`, `engine::fast_reindex_message_area`, `query.php`):**
+  - Added `pro_bridge::get_message_start_pk()` and `pro_bridge::should_index_message()` hooks so `local_typesensepro` can filter out automated notification noise, trivial 1-word replies, and bulk broadcast fan-out during message indexing while keeping standard unfiltered Moodle behavior in the standalone free plugin.
+
+---
+
 ## [1.1.4] - 2026-11-10 (`2026111001`)
 
 ### Added & Fixed

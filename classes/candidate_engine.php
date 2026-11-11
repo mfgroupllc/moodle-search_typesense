@@ -97,8 +97,10 @@ class candidate_engine extends engine {
         );
         $areas = !empty($filters->areaids) ? array_values(array_intersect($enabled, (array)$filters->areaids)) : $enabled;
         $initialscope = $this->accessmanager->scope_courseids($filters);
-        if ($areas === ['core_course-course'] && ($filters->scope ?? '') === 'current' &&
-                $this->accessmanager->explicit_courseids($filters) === null) {
+        if (
+            $areas === ['core_course-course'] && ($filters->scope ?? '') === 'current' &&
+                $this->accessmanager->explicit_courseids($filters) === null
+        ) {
             // When explicitly searching the Courses tab, include courses and templates across all categories.
             $filters = clone $filters;
             $filters->scopecourseids = null;
@@ -120,8 +122,10 @@ class candidate_engine extends engine {
         $limited = false;
 
         $isrelevancesort = empty($filters->order) || $filters->order === 'relevance';
-        if ($page === 0 && $isrelevancesort && in_array('core_course-course', $areas, true) &&
-                trim((string)($filters->q ?? '')) !== '' && trim((string)$filters->q) !== '*') {
+        if (
+            $page === 0 && $isrelevancesort && in_array('core_course-course', $areas, true) &&
+                trim((string)($filters->q ?? '')) !== '' && trim((string)$filters->q) !== '*'
+        ) {
             $maxpriority = ($areas === ['core_course-course']) ? $target : min(5, $target);
             $documents = $this->prepend_priority_courses($filters, $initialscope, $seen, $started, $maxpriority);
         }
@@ -237,7 +241,7 @@ class candidate_engine extends engine {
      */
     protected function candidate_params(\stdClass $filters, ?array $scope, array $areas): array {
         global $USER;
-        $quoted = array_map(function($area) {
+        $quoted = array_map(function ($area) {
             // IDs originate in Moodle's enabled search areas, not arbitrary filter input.
             return '`' . str_replace('`', '', $area) . '`';
         }, $areas);
@@ -263,12 +267,25 @@ class candidate_engine extends engine {
         }
         $rawq = (string)($filters->q ?? '');
         $normq = trim((string)preg_replace('/_+/', ' ', $rawq));
+        $effectiveq = $normq !== '' ? $normq : ($rawq !== '' ? $rawq : '*');
+        $iscourseonly = ($areas === ['core_course-course']);
+        $queryby = $iscourseonly
+            ? 'title,description2,description1,content'
+            : $this->get_query_by_fields();
         $params = [
-            'q' => $normq !== '' ? $normq : ($rawq !== '' ? $rawq : '*'),
-            'query_by' => $this->get_query_by_fields(),
+            'q' => $effectiveq,
+            'query_by' => $queryby,
             'per_page' => static::BATCH_SIZE,
             'filter_by' => implode(' && ', $clauses),
         ];
+        if ($effectiveq !== '*') {
+            // Require all search terms to match so adding terms narrows results rather than expanding via OR fallback.
+            $params['drop_tokens_threshold'] = 0;
+            $params['prioritize_token_position'] = 'true';
+            if ($iscourseonly) {
+                $params['query_by_weights'] = '12,10,3,1';
+            }
+        }
         if (($filters->order ?? '') === self::SORT_DATE_DESC) {
             $params['sort_by'] = 'modified:desc';
         } else if (($filters->order ?? '') === self::SORT_DATE_ASC) {
@@ -327,7 +344,10 @@ class candidate_engine extends engine {
         $normq = trim((string)preg_replace('/_+/', ' ', $rawq));
         $params = [
             'q' => $normq !== '' ? $normq : $rawq,
-            'query_by' => 'title,description1,description2',
+            'query_by' => 'title,description2,description1',
+            'query_by_weights' => '12,10,3',
+            'drop_tokens_threshold' => 0,
+            'prioritize_token_position' => 'true',
             'per_page' => 25,
             'page' => 1,
             'prefix' => 'true',
@@ -418,8 +438,10 @@ class candidate_engine extends engine {
                 return null;
             }
         }
-        if (empty($data['id']) || empty($data['areaid']) || empty($data['itemid']) ||
-                (int)$data['courseid'] <= 0 || (int)$data['contextid'] <= 0) {
+        if (
+            empty($data['id']) || empty($data['areaid']) || empty($data['itemid']) ||
+                (int)$data['courseid'] <= 0 || (int)$data['contextid'] <= 0
+        ) {
             return null;
         }
         foreach (['userid', 'groupid', 'modified'] as $field) {
@@ -448,17 +470,28 @@ class candidate_engine extends engine {
             return false;
         }
         foreach (['contextids' => 'contextid', 'userids' => 'userid', 'groupids' => 'groupid'] as $key => $field) {
-            if (!empty($filters->{$key}) && !in_array((int)($data[$field] ?? 0),
-                    access_manager::normalise_ids((array)$filters->{$key}), true)) {
+            if (
+                !empty($filters->{$key}) && !in_array(
+                    (int)($data[$field] ?? 0),
+                    access_manager::normalise_ids((array)$filters->{$key}),
+                    true
+                )
+            ) {
                 return false;
             }
         }
-        if ((!empty($filters->timestart) && (int)($data['modified'] ?? 0) < (int)$filters->timestart) ||
-                (!empty($filters->timeend) && (int)($data['modified'] ?? 0) > (int)$filters->timeend)) {
+        if (
+            (!empty($filters->timestart) && (int)($data['modified'] ?? 0) < (int)$filters->timestart) ||
+                (!empty($filters->timeend) && (int)($data['modified'] ?? 0) > (int)$filters->timeend)
+        ) {
             return false;
         }
-        if (!empty($filters->title) && \core_text::strpos(\core_text::strtolower($data['title'] ?? ''),
-                \core_text::strtolower($filters->title)) === false) {
+        if (
+            !empty($filters->title) && \core_text::strpos(
+                \core_text::strtolower($data['title'] ?? ''),
+                \core_text::strtolower($filters->title)
+            ) === false
+        ) {
             return false;
         }
         return true;
@@ -480,9 +513,11 @@ class candidate_engine extends engine {
         if (!isset($access->usercontexts[$areaid][$contextid])) {
             return false;
         }
-        if (isset($data['groupid']) && isset($access->separategroupscontexts[$contextid]) &&
+        if (
+            isset($data['groupid']) && isset($access->separategroupscontexts[$contextid]) &&
                 !isset($access->visiblegroupscontextsareas[$contextid][$areaid]) &&
-                !isset($access->usergroups[(int)$data['groupid']])) {
+                !isset($access->usergroups[(int)$data['groupid']])
+        ) {
             return false;
         }
         return true;

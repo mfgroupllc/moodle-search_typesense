@@ -141,7 +141,7 @@ class pro_bridge {
         \moodle_url $url
     ): string {
         $class = self::PRO_CLASS;
-        if ($data && $results && self::is_active() && method_exists($class, 'render_search_page_banner')) {
+        if (self::is_active() && method_exists($class, 'render_search_page_banner')) {
             return (string)$class::render_search_page_banner($data, $scope, $results, $url);
         }
         return '';
@@ -193,5 +193,36 @@ class pro_bridge {
             return (string)$class::render_infer_page_banner($inferred);
         }
         return '';
+    }
+
+    /**
+     * Return an optional minimum primary-key ID or timestamp cutoff for message indexing when Pro smart filtering is active.
+     *
+     * @param string $areaid Message search area ID.
+     * @param int $minid Minimum message ID in {messages}.
+     * @param int $maxid Maximum message ID in {messages}.
+     * @return int Starting primary-key ID cursor.
+     */
+    public static function get_message_start_pk(string $areaid, int $minid, int $maxid): int {
+        $class = self::PRO_CLASS;
+        if (self::is_active() && method_exists($class, 'get_message_start_pk')) {
+            return (int)$class::get_message_start_pk($areaid, $minid, $maxid);
+        }
+        return $minid;
+    }
+
+    /**
+     * Allow local_typesensepro to filter out automated notification noise, trivial 1-word replies, and bulk broadcast fan-out.
+     *
+     * @param \stdClass $rec Raw message record from {messages}.
+     * @param array $state Reference to per-run deduplication state array.
+     * @return bool True if the message is meaningful and should be indexed.
+     */
+    public static function should_index_message(\stdClass $rec, array &$state): bool {
+        $class = self::PRO_CLASS;
+        if (self::is_active() && method_exists($class, 'should_index_message')) {
+            return (bool)$class::should_index_message($rec, $state);
+        }
+        return true;
     }
 }

@@ -90,8 +90,10 @@ $customdata['orderoptions'] = $engine->get_supported_orders($context);
 $cat = null;
 if (manager::is_search_area_categories_enabled()) {
     $cat = manager::get_search_area_category_by_name(optional_param('cat', '', PARAM_NOTAGS));
-    if ($cat && $cat->get_name() === 'core-users' &&
-            !\search_typesense\user_profile_fields::can_current_user_search_users()) {
+    if (
+        $cat && $cat->get_name() === 'core-users' &&
+            !\search_typesense\user_profile_fields::can_current_user_search_users()
+    ) {
         $cat = manager::get_search_area_category_by_name(manager::SEARCH_AREA_CATEGORY_ALL);
     }
     if ($cat) {
@@ -105,7 +107,7 @@ $mform = new \core_search\output\form\search($formurl, $customdata);
 $data = $mform->get_data();
 
 // Read comma-separated URL filters when not submitted via mform.
-$readids = static function(string $name, string $type): array {
+$readids = static function (string $name, string $type): array {
     $value = optional_param($name, '', PARAM_RAW);
     return $value === '' ? [] : array_values(clean_param_array(explode(',', $value), $type));
 };
@@ -190,8 +192,10 @@ if ($data) {
     $results = $emptyareas ? (object)[
         'results' => [], 'actualpage' => 0, 'totalcount' => 0, 'hasmore' => false, 'limited' => false,
     ] : $candidateengine->search_page($data, $page);
-    if (empty($results->results) && $page === 0 && $scope !== 'videotime' && empty($requestedareaids) &&
-            $cat && $cat->get_name() !== manager::SEARCH_AREA_CATEGORY_ALL) {
+    if (
+        empty($results->results) && $page === 0 && $scope !== 'videotime' && empty($requestedareaids) &&
+            $cat && $cat->get_name() !== manager::SEARCH_AREA_CATEGORY_ALL
+    ) {
         $allcat = manager::get_search_area_category_by_name(manager::SEARCH_AREA_CATEGORY_ALL);
         if ($allcat) {
             $fallbackdata = clone $data;
@@ -248,8 +252,8 @@ if (count($validscopes) > 1) {
 }
 
 $mform->display();
+echo \search_typesense\pro_bridge::render_search_page_banner($data, $scope, $results, $url);
 if ($results) {
-    echo \search_typesense\pro_bridge::render_search_page_banner($data, $scope, $results, $url);
     if ($results->limited) {
         echo $OUTPUT->notification(get_string('searchlimited', 'search_typesense'), 'notifyinfo');
     } else if (!$results->results && !$results->hasmore) {

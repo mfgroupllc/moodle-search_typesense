@@ -1424,7 +1424,8 @@ class engine extends \core_search\engine {
         }
 
         $savedcursor = (int)get_config($componentconfigname, $varname . '_pkcursor');
-        $cursor = ($savedcursor > 0) ? $savedcursor : (int)$minmax->minid;
+        $defaultstart = pro_bridge::get_message_start_pk($areaid, (int)$minmax->minid, (int)$minmax->maxid);
+        $cursor = ($savedcursor > 0) ? $savedcursor : $defaultstart;
         $maxid = (int)$minmax->maxid;
         $chunksize = 5000;
 
@@ -1437,6 +1438,7 @@ class engine extends \core_search\engine {
         $stopat = ($timelimit > 0) ? ($started + $timelimit) : 0;
         $batchmax = 500;
         $currentbatch = [];
+        $dedupstate = [];
 
         $ownerfield = $issent ? 'm.useridfrom' : 'mcm.userid';
         $sql = "SELECT m.id, m.useridfrom, m.subject, m.smallmessage, m.timecreated,
@@ -1465,6 +1467,14 @@ class engine extends \core_search\engine {
                 'supportuser' => \core_user::SUPPORT_USER,
             ]);
             foreach ($rs as $rec) {
+                $numrecords++;
+                if ((int)$rec->timecreated > $lastindexeddoc) {
+                    $lastindexeddoc = (int)$rec->timecreated;
+                }
+                if (!pro_bridge::should_index_message($rec, $dedupstate)) {
+                    $numdocsignored++;
+                    continue;
+                }
                 $owneruserid = $issent ? (int)$rec->useridfrom : (int)$rec->useridto;
                 $otheruserid = $issent ? (int)$rec->useridto : (int)$rec->useridfrom;
                 $doc = \core_search\document_factory::instance($rec->id, $componentname, $areaname);
@@ -1479,10 +1489,6 @@ class engine extends \core_search\engine {
                 $doc->set_is_new(true);
 
                 $currentbatch[] = $doc;
-                $numrecords++;
-                if ((int)$rec->timecreated > $lastindexeddoc) {
-                    $lastindexeddoc = (int)$rec->timecreated;
-                }
                 if (count($currentbatch) >= $batchmax) {
                     [$processed, $failed, $bcount] = $this->add_document_batch($currentbatch, false);
                     $numdocs += $processed;

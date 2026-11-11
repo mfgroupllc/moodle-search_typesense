@@ -33,7 +33,6 @@ defined('MOODLE_INTERNAL') || die();
  * Typesense API client.
  */
 class client {
-
     /** @var string $host */
     protected $host;
     /** @var int $port */
@@ -76,6 +75,10 @@ class client {
         $this->curl = new \curl(['ignoresecurity' => true]);
         $this->curl->setHeader('X-TYPESENSE-API-KEY: ' . $this->apikey);
         $this->curl->setHeader('Content-Type: application/json');
+        $this->curl->setopt([
+            'CURLOPT_CONNECTTIMEOUT' => 2,
+            'CURLOPT_TIMEOUT' => 30,
+        ]);
 
         // When talking https to a Typesense instance using a self-signed
         // certificate (the default for this plugin's CloudFormation template),
@@ -325,7 +328,7 @@ class client {
             $this->request('delete', $path, null, ['filter_by' => $filterby]);
             return;
         } catch (\moodle_exception $e) {
-            // Fall through to the search + delete fallback.
+            unset($e);
         }
         $results = $this->search($collection, [
             'q' => '*',
