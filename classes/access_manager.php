@@ -47,9 +47,9 @@ class access_manager extends \core_search\manager {
     private $contextcache = [];
 
     /**
-     * Normalise a set of positive numeric identifiers.
+     * Normalize a set of positive numeric identifiers.
      *
-     * @param array $ids IDs to normalise.
+     * @param array $ids IDs to normalize.
      * @return int[]
      */
     public static function normalise_ids(array $ids): array {
@@ -139,7 +139,7 @@ class access_manager extends \core_search\manager {
                 !empty($this->get_my_courses($allaccessible));
             if ($needsparent) {
                 // Pass only explicit course filters to parent so system/user contexts and
-                // site-admin behaviour match core while get_my_courses() limits course expansion.
+                // site-admin behavior match core while get_my_courses() limits course expansion.
                 $info = parent::get_areas_user_accesses($explicit ?? false, $contextids ?: false);
                 $cached['info']->everything = !empty($info->everything);
                 if (empty($info->everything)) {

@@ -358,10 +358,10 @@ class course_scope {
     }
 
     /**
-     * Infer active and in-development categories from course dates, modifications, enrolments, and access.
+     * Infer active and in-development categories from course dates, modifications, enrollments, and access.
      *
      * Enforces cohort naming patterns (e.g. YYMM term folders) and course start/end dates so completed
-     * cohorts with expired end dates are excluded even if they had historical enrolments, and avoids
+     * cohorts with expired end dates are excluded even if they had historical enrollments, and avoids
      * rolling up parent "Active" containers over distinct cohort child folders.
      *
      * @param int|null $now Optional reference timestamp for deterministic testing.

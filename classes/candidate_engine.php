@@ -30,7 +30,7 @@ defined('MOODLE_INTERNAL') || die();
  * Searches ranked candidates before expanding Moodle course access contexts.
  *
  * This service is used by the plugin controller, never as a replacement for
- * core's manager singleton. Unauthorised candidates stay on the server.
+ * core's manager singleton. Unauthorized candidates stay on the server.
  *
  * @package    search_typesense
  * @copyright  2026 Christopher Murad <chrismurad@mfgrpllc.com>
@@ -74,10 +74,10 @@ class candidate_engine extends engine {
     }
 
     /**
-     * Return an authorised page, with no unverified backend result counts.
+     * Return an authorized page, with no unverified backend result counts.
      *
      * limited means scanning stopped before enough results or proven exhaustion.
-     * hasmore is true only when another authorised result was actually checked.
+     * hasmore is true only when another authorized result was actually checked.
      *
      * @param \stdClass $filters Original search filters, plus optional scopecourseids.
      * @param int $page Zero-based result page.
@@ -682,11 +682,11 @@ class candidate_engine extends engine {
     }
 
     /**
-     * Format only the authorised prefix. Totalcount deliberately excludes raw backend counts.
+     * Format only the authorized prefix. Totalcount deliberately excludes raw backend counts.
      *
-     * @param array $documents Authorised documents in rank order.
+     * @param array $documents Authorized documents in rank order.
      * @param int $page Zero-based page.
-     * @param bool $hasmore Whether one more authorised document was found.
+     * @param bool $hasmore Whether one more authorized document was found.
      * @param bool $limited Whether the scan stopped without proving exhaustion.
      * @return \stdClass
      */

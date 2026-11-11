@@ -4,13 +4,38 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.9] - 2026-11-10 (`2026111006`)
+
+### Added & Fixed
+- **Priority User Profile & Student ID (`idnumber`) Lookup (`\search_typesense\candidate_engine::prepend_priority_users`):**
+  - Added `prepend_priority_users()` to `candidate_engine::search_page()` and raised default candidate prefix expansion (`max_candidates => 200` on general queries, `max_candidates => 500` on user queries).
+  - Runs an exact-prefix pass (`num_typos = 0`) against `core_user-user` first so numeric student ID prefixes (such as typing `9999` for `idnumber = 9999999998`) immediately surface the matching student profile in `tier0` instead of being cut off by Typesense's default `max_candidates = 4` limit or buried beneath 1-typo phone numbers and forum posts.
+  - Falls back automatically to typo-tolerant user matching (`num_typos = 2`) so misspelled names (such as `"Sam Hutchens"` $\rightarrow$ `"Sam Hutchins"`) resolve accurately.
+- **Standardized on American (US) English (`lang/en/search_typesense.php`, `classes/*`, `README.md`, `CHANGELOG.md`):**
+  - Updated all user-facing language strings, comments, docblocks, and documentation from UK/AU spellings (`authorised`, `analyses`, `enrolment`, `normalised`, `serialised`, `cancelled`) to American (US) English (`authorized`, `analyzes`, `enrollment`, `normalized`, `serialized`, `canceled`).
+
+---
+
+## [1.1.8] - 2026-11-10 (`2026111005`)
+
+### Added & Fixed
+- **Cohort Naming Pattern & Course Start/End Date Enforcement (`\search_typesense\course_scope`):**
+  - Refined `course_scope::infer_current_categories()` to evaluate 4-digit `YYMM` cohort/term folder codes (such as `2602`, `2604`, `2605`, `2607`) and course `startdate` / `enddate` windows (`enddate > 0 && enddate < now - 14 days`) so completed cohorts (`2602`) are excluded even when they had enrollments within the 120-day lookback window.
+  - Prevented parent `"Active"` containers from rolling up when they contain a mix of active and completed cohort child folders, selecting only the genuinely active child folders.
+  - Updated `course_scope::courseids('current')` to filter out individual expired courses (`enddate > 0 && enddate < now - 14 days`) inside active categories (such as old orientation or term courses inside shared folders) while moved expired courses automatically appear under `Historical / other courses`.
+- **Active-Course Scope Restriction for Forum Posts (`\search_typesense\engine::fast_reindex_forum_post_area`, `engine::add_document`):**
+  - Added `course_scope::active_indexing_courseids()` (`current` courses + `SITEID`) and restricted both bulk NDJSON forum post indexing (`fast_reindex_forum_post_area()`) and incremental cron indexing (`add_document()`) for `mod_forum-post` to active courses whenever active course categories are configured.
+  - Reduces `mod_forum-post` index volume by ~97% on multi-year institutions (e.g., 90,950 active-course forum posts vs. 3.56M historical forum posts), keeping the Typesense index comfortably in physical RAM without swap.
+
+---
+
 ## [1.1.7] - 2026-11-10 (`2026111004`)
 
 ### Fixed & Improved
 - **Eliminated Moodle Session Lock Contention (`reindex_areas.php`, `infer_categories.php`, `query.php`):**
   - Added `\core\session\manager::write_close()` prior to Typesense facet queries, AJAX status polling (`action=ajaxstatus`), inline NDJSON streaming (`action=runnow`), category inference (`infer_categories.php`), and search/AI Overview execution (`query.php`) so long-running requests never lock the user's Moodle browser session (`Cannot obtain session lock`).
 - **25-Second Inline Time Cap with Automatic Background Handoff (`reindex_areas.php`):**
-  - Capped synchronous **Run Inline** (`action=runnow`) executions at 25 seconds (well below Apache `mod_proxy_fcgi`'s 60s timeout) and automatically hands off any remaining PK chunks (`$stats['partial']`) to the background `fast_reindex_area_adhoc_task` queue.
+  - Capped synchronous **Run Inline** (`action=runnow`) executions at 25 seconds (well below Apache `mod_proxy_fcgi`'s 60s timeout) and automatically hands off any remaining primary-key chunks (`$stats['partial']`) to the background `fast_reindex_area_adhoc_task` queue.
 
 ---
 
@@ -31,7 +56,7 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
 
 ### Added & Refined
 - **Strict `AND` Multi-Term Search Narrowing (`\search_typesense\candidate_engine`):**
-  - Configured `drop_tokens_threshold => 0` and `prioritize_token_position => 'true'` in `candidate_params()` and `prepend_priority_courses()`, with `query_by_weights => '12,10,3,1'` on `title,description2,description1,content` for Course searches so adding additional search terms (e.g. `"PB101 points"`, `"PA221 points"`) strictly narrows results to documents containing **all** terms rather than falling back to `OR`.
+  - Configured `drop_tokens_threshold => 0` and `prioritize_token_position => 'true'` in `candidate_params()` and `prepend_priority_courses()`, with `query_by_weights => '12,10,3,1'` on `title,description2,description1,content` for Course searches so adding additional search terms (e.g., `"PB101 points"`, `"PA221 points"`) strictly narrows results to documents containing **all** terms rather than falling back to `OR`.
 - **Fail-Fast HTTP Connect Timeout (`\search_typesense\client`):**
   - Added a 2-second `CURLOPT_CONNECTTIMEOUT` so Moodle admin pages never block if the Typesense server is rebooting or unreachable.
 - **Pro Extension Hooks for Smart Message Filtering & Guided Discovery (`\search_typesense\pro_bridge`, `engine::fast_reindex_message_area`, `query.php`):**
@@ -63,7 +88,7 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
   - Added a dedicated **Typesense Fast Area Re-index (NDJSON)** administration page (`/search/engine/typesense/reindex_areas.php`) showing live per-area document counts in Typesense and 1-click **Fast Re-index Now (NDJSON)** and **Queue for Next CLI / Cron** actions that bypass Moodle core's slow context-by-context `{search_index_requests}` queue.
   - Added automatic detection and 1-click repair (`\context_helper::build_all_paths(false)`) for unbuilt/orphaned `{context}` rows (`path IS NULL OR depth = 0`) that otherwise cause Moodle core's `searchreindex.php` to fail with `moodle_database::get_in_or_equal() does not accept empty arrays`.
 - **Indexer Memory Exhaustion Fix (`\search_typesense\engine::index_starting`, `area_index_starting`, `area_index_complete`, `add_document_batch`):**
-  - Automatically raises PHP memory limit via `raise_memory_limit(MEMORY_HUGE)` (2GB) prior to opening search area recordsets (`get_recordset_by_timestamp`), clears per-area `activitiesdata` and static `get_fast_modinfo(0, 0, true)` caches between batches/areas, and adjusts batch size to 250 documents when attached file indexing is active.
+  - Automatically raises PHP memory limit via `raise_memory_limit(MEMORY_HUGE)` (2 GB) prior to opening search area recordsets (`get_recordset_by_timestamp`), clears per-area `activitiesdata` and static `get_fast_modinfo(0, 0, true)` caches between batches/areas, and adjusts batch size to 250 documents when attached file indexing is active.
 - **Modular Admin Sub-Pages & Shared Navigation Tabs (`\search_typesense\admin_nav`, `settings.php`):**
   - Split administration settings into clean sub-pages under **Site administration $\rightarrow$ Plugins $\rightarrow$ Search** (`Connection & Scopes`, `Content, Users & Integrations`, `Fast Area Re-index (NDJSON)`, and `Active Categories`) with a unified Bootstrap tab bar.
 
@@ -93,7 +118,7 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
 
 ### Fixed
 - **Manager Memory Exhaustion & Multi-Batch Timeout Fix (`\search_typesense\access_manager`):**
-  - Scoped `access_manager::eligible_courses(true)` to evaluate `can_access_course()` strictly on candidate course batches instead of calling `parent::get_my_courses(true)` across all site courses, eliminating `128MB` memory exhaustion for system-level Managers and 10-second multi-batch timeouts.
+  - Scoped `access_manager::eligible_courses(true)` to evaluate `can_access_course()` strictly on candidate course batches instead of calling `parent::get_my_courses(true)` across all site courses, eliminating `128 MB` memory exhaustion for system-level Managers and 10-second multi-batch timeouts.
 
 ---
 
@@ -104,12 +129,11 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
   - Enabled Moodle core attached-file indexing (`engine::file_indexing_enabled()`) so uploaded files attached to course resources, folders, forums, assignments, and books are automatically extracted and indexed into Typesense.
   - **Office OpenXML & OpenDocument (`.docx`, `.pptx`, `.xlsx`, `.odt`, `.odp`, `.ods`):** Native PHP `\ZipArchive` XML extraction across document bodies, headers/footers/footnotes, presentation slides, speaker notes, and shared spreadsheet strings.
   - **Plain Text, Markup & Video Captions (`.txt`, `.md`, `.csv`, `.tsv`, `.html`, `.xml`, `.vtt`, `.srt`, `.json`):** Direct text extraction with automatic stripping of `WEBVTT` / SRT cue headers and timestamps so spoken video captions are indexed cleanly.
-  - **4-Step Automatic PDF Extraction Chain (`.pdf`):**
-    1. Optional external Apache Tika server (`search_typesense/tikaurl`) if configured.
-    2. `pdftotext` CLI (`poppler-utils`) via `search_typesense/pathtopdftotext` (`admin_setting_configexecutable`) or auto-discovered alongside Moodle's `$CFG->pathtopdftoppm`.
-    3. Moodle's configured Ghostscript path (`$CFG->pathtogs`) using `-sDEVICE=txtwrite`.
-    4. Built-in pure-PHP PDF stream and `ToUnicode` CMap parser (`file_extractor::extract_pdf_text_native()`) that decompresses `FlateDecode` streams and decodes both literal `(...) Tj/TJ` and CID `<hex> Tj/TJ` text operators with zero external binaries required.
-- **Admin Settings (`settings.php`):** Added *Attached document & file content indexing* section (`fileindexing`, `pathtopdftotext`, `tikaurl`).
+  - **Local PDF Extraction Chain (`.pdf`):**
+    1. `pdftotext` CLI (`poppler-utils`) via `search_typesense/pathtopdftotext` (`admin_setting_configexecutable`) or auto-discovered alongside Moodle's `$CFG->pathtopdftoppm`.
+    2. Moodle's configured Ghostscript path (`$CFG->pathtogs`) using `-sDEVICE=txtwrite`.
+    3. Built-in pure-PHP PDF stream and `ToUnicode` CMap parser (`file_extractor::extract_pdf_text_native()`) that decompresses `FlateDecode` streams and decodes both literal `(...) Tj/TJ` and CID `<hex> Tj/TJ` text operators with zero external binaries required.
+- **Admin Settings (`settings.php`):** Added *Attached document & file content indexing* section (`fileindexing`, `pathtopdftotext`).
 - **PHPUnit Tests (`tests/file_extractor_test.php`):** Added unit tests covering `.docx`, `.pptx` (slides + speaker notes), `.vtt` captions, `FlateDecode` PDF streams, and `ToUnicode` CMap hex PDF streams.
 
 ---
@@ -125,7 +149,7 @@ All notable changes to the **Typesense Global Search Engine (`search_typesense`)
   - Eliminates 10+ second context pre-calculation timeouts on large multi-year Moodle instances by pulling top candidate hits from Typesense first and running Moodle's native `check_access()`, group, and context checks strictly on candidate matches.
 - **Active vs. Historical Course Scopes (`\search_typesense\course_scope` & `infer_categories.php`):**
   - Separates searches into `Current courses`, `Historical / other courses`, and `Search everything` tabs.
-  - Includes a 1-click **Detect / Re-check Active Categories** admin tool analysing course start/end dates, recent course modifications, upcoming/in-development shells, and student enrolment velocity.
+  - Includes a 1-click **Detect / Re-check Active Categories** admin tool analyzing course start/end dates, recent course modifications, upcoming/in-development shells, and student enrollment velocity.
 - **Native Video Time (`mod_videotime`) Auto-Detection:**
   - Automatically detects when `mod_videotime` is installed and adds a customizable Video Time filter button and result tab.
 - **Role-Aware User Identity Search (`\search_typesense\user_profile_fields`):**

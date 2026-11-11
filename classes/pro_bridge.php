@@ -126,11 +126,11 @@ class pro_bridge {
     /**
      * Render optional Pro UI above search results (permission-safe AI overview / historical intent banner).
      *
-     * Only already-authorised documents in $results->results are passed to the extension.
+     * Only already-authorized documents in $results->results are passed to the extension.
      *
      * @param \stdClass|null $data Submitted search filter data.
      * @param string $scope Active scope identifier.
-     * @param \stdClass|null $results Authorised search results object.
+     * @param \stdClass|null $results Authorized search results object.
      * @param \moodle_url $url Current search page URL.
      * @return string HTML fragment or empty string.
      */
@@ -152,7 +152,7 @@ class pro_bridge {
      *
      * @param \stdClass $data Search filter data.
      * @param string $scope Active scope identifier.
-     * @param \stdClass $results Authorised search results object.
+     * @param \stdClass $results Authorized search results object.
      * @param float $elapsed Search execution time in seconds.
      * @return void
      */

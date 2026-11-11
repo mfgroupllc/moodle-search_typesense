@@ -86,7 +86,7 @@ final class course_scope_test extends \advanced_testcase {
     }
 
     /**
-     * Verify inference includes zero-enrolment upcoming/in-development courses and excludes archives.
+     * Verify inference includes zero-enrollment upcoming/in-development courses and excludes archives.
      *
      * @return void
      */
@@ -103,7 +103,7 @@ final class course_scope_test extends \advanced_testcase {
         $archived = $generator->create_category(['name' => 'Archived', 'parent' => $program->id]);
         $deleteme = $generator->create_category(['name' => 'Delete Me']);
 
-        // Upcoming in-development course with ZERO enrolments.
+        // Upcoming in-development course with ZERO enrollments.
         $devcourse = $generator->create_course([
             'category' => $termupcoming->id,
             'startdate' => $now + (14 * DAYSECS),
