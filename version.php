@@ -24,8 +24,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026111101;        // Plugin version (YYYYMMDDxx).
+$plugin->version   = 2026111102;        // Plugin version (YYYYMMDDxx).
 $plugin->requires  = 2022112800;        // Moodle 4.1+ (free core floor).
 $plugin->component = 'search_typesense';
 $plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '1.1.10';
+$plugin->release   = '1.1.11';

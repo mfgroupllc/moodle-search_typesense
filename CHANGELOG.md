@@ -4,6 +4,14 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.11] - 2026-11-11
+
+### Changed
+- **Moodle Plugin CI (`moodle-plugin-ci`) Compliance & Workflow:**
+  - Resolved all `moodle-plugin-ci codechecker` (`phpcs --standard=moodle`) and `moodle-plugin-ci phpdoc` (`local_moodlecheck`) checks with 0 errors and 0 warnings, and added `.github/workflows/moodle-ci.yml`.
+
+---
+
 ## [1.1.10] - 2026-11-11
 
 ### Added & Improved
