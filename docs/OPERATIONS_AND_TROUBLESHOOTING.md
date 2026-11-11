@@ -1,12 +1,12 @@
-# Operations, AWS Deployment & Troubleshooting (`search_typesense`)
+# AWS Setup, Sizing & FAQ
 
-This guide covers production deployment, memory sizing, collection compaction, CLI maintenance commands, and troubleshooting for `search_typesense`.
+This guide covers deploying Typesense on AWS, sizing your server for peak performance, and answering common administrator questions.
 
 ---
 
-## 1. Deploying Typesense on AWS (`aws/typesense.yaml`)
+## 1. Deploying Typesense on AWS (CloudFormation)
 
-The included CloudFormation template ([`aws/typesense.yaml`](https://www.chrismurad.com/moodle-typesense/typesense.yaml), see [`aws/README.md`](https://github.com/mfgroupllc/moodle-search_typesense/blob/main/aws/README.md)) provisions a dedicated Amazon Linux 2023 EC2 instance running the native C++ `typesense-server` binary under `systemd` (`typesense.service`):
+The included CloudFormation template ([`aws/typesense.yaml`](https://www.chrismurad.com/moodle-typesense/typesense.yaml)) deploys a dedicated Amazon Linux 2023 EC2 instance running Typesense inside your existing AWS VPC in under 3 minutes:
 
 ```bash
 aws cloudformation deploy \
@@ -21,83 +21,40 @@ aws cloudformation deploy \
     TypesenseVersion=27.1
 ```
 
-### Key Production Characteristics
-- **No Public Exposure:** Port `8108` is restricted in the EC2 Security Group exclusively to `MoodleSecurityGroupId`. Even when `local_typesensepro` Navbar InstantSearch is enabled, browsers communicate only with Moodle (`/local/typesensepro/ajax_instant.php`), which queries Typesense over your private VPC network.
-- **Self-Signed TLS with IP SAN:** The bootstrap script generates a 10-year TLS certificate (`/data/typesense.crt` and `/data/typesense.key`) including `IP:<PrivateIp>,DNS:typesense.moodle` in `subjectAltName`.
+### Security Highlights
+- **Private VPC Only:** TCP port `8108` is restricted in the EC2 Security Group exclusively to your Moodle web server security group (`MoodleSecurityGroupId`). Your Typesense server is never exposed to the public internet.
+- **Built-In TLS:** Automatically generates a 10-year TLS certificate bound to your instance's private IP address.
+- **AWS Systems Manager (SSM) Ready:** Includes SSM Session Manager support so no SSH keys or bastion hosts are needed.
 
 ---
 
-## 2. Memory Sizing & Keeping Typesense 100% in Physical RAM (No Swap)
+## 2. Server Memory Sizing Guide
 
-Typesense is an **in-memory** search engine: it stores its inverted indexes in RAM for sub-10ms lookups and persists raw documents to `/data/db` (RocksDB) on disk.
-- **Why Swap Should Be Avoided:** If the Typesense C++ heap exceeds physical RAM and spills into Linux swap (`swapfile`), prefix searches that touch cold pages will page-fault from disk and jump from `5 ms` to `1,000–2,000 ms`.
-- **Recommended Instance Sizing:**
+Typesense keeps its search indexes in physical RAM to deliver sub-second searches. To avoid disk swap slowdowns, size your instance so the active document index fits comfortably in physical RAM:
 
-| Active Indexed Documents | Typical Typesense RAM Usage | Recommended EC2 Instance |
+| Active Indexed Documents | Typical RAM Usage | Recommended AWS Instance |
 | :--- | :--- | :--- |
-| Up to **500,000** docs | ~500 MB – 750 MB | `t3.small` (2 GB RAM) |
-| **500,000 – 1,000,000** docs | ~800 MB – 1.2 GB | `t3.small` (2 GB RAM) or `t3.medium` (4 GB RAM) |
-| **1,000,000 – 3,000,000** docs | ~1.5 GB – 3.5 GB | `t3.medium` (4 GB RAM) or `t3.large` (8 GB RAM) |
+| Up to **500,000** documents | ~500 MB – 750 MB | `t3.small` (2 GB RAM) |
+| **500,000 – 1,000,000** documents | ~800 MB – 1.2 GB | `t3.small` (2 GB RAM) or `t3.medium` (4 GB RAM) |
+| **1,000,000 – 3,000,000** documents | ~1.5 GB – 3.5 GB | `t3.medium` (4 GB RAM) or `t3.large` (8 GB RAM) |
 
-### Keeping Index Volume Lean
-1. **Configure Active Course Categories (`infer_categories.php`):** Once `search_typesense/currentcategories` is saved, `mod_forum-post` automatically indexes only posts belonging to active courses (`course_scope::active_indexing_courseids()`), preventing millions of archived historical forum posts from inflating RAM.
-2. **Enable Smart Message Filtering (with `local_typesensepro`):** Filters out automated notifications, 1–2 word acknowledgments, and mass broadcast fan-out from `core_message-*`.
+> **Tip for Multi-Year Moodle Sites:** Configure **Active Course Categories** before running your initial index. Restricting forum post indexing to active courses (and enabling **Smart Message Filtering** in Typesense Pro) typically keeps even large multi-year sites under 1,000,000 active documents (~1 GB RAM), allowing them to run smoothly in physical RAM on a `t3.small` or `t3.medium` instance without swap.
 
 ---
 
-## 3. Fast Collection Compaction Runbook (Zero-Swap Reset)
+## 3. Frequently Asked Questions & Troubleshooting
 
-If a Typesense collection previously indexed millions of historical documents that are no longer needed, deleting millions of documents via HTTP `DELETE ?filter_by=...` does not immediately shrink the C++ allocator's virtual heap until `typesense.service` is restarted.
+### Why does a searcharea show `0` documents or `Never` in Fast Area Re-index?
+Either that search area has not been indexed yet, or your Moodle site has no content in that specific activity module (for example, if your courses do not use *Glossary* or *Wiki* activities). Click **Run in Background** next to the area; once complete, **Last Run** will display the current timestamp.
 
-To compact a collection cleanly in ~3 minutes without using swap:
-1. Export the documents you want to keep to `/var/tmp/keep.jsonl` (note: always use `/var/tmp` on root EBS rather than `/tmp`, because `/tmp` on Amazon Linux 2023 is `tmpfs` backed by RAM).
-2. Save the collection schema from `GET https://127.0.0.1:8108/collections/moodle` (stripping `num_documents` and `created_at`).
-3. Stop `typesense.service`, wipe `/data/db`, `/data/meta`, and `/data/state` (preserving `/data/typesense.crt` and `/data/typesense.key`), and start `typesense.service`.
-4. Recreate the collection via `POST /collections` and stream `/var/tmp/keep.jsonl` into `/collections/moodle/documents/import?action=upsert` in 2,500-line batches.
+### Why didn't a student ID number appear when searching?
+Check the following:
+1. Ensure your Moodle account has staff permissions to view user identity fields (`moodle/site:viewuseridentity` or `moodle/user:viewalldetails`). By default, students are restricted from searching user profiles.
+2. Under **Content, Users & Integrations**, confirm that **ID number** is checked under **Searchable user profile fields**.
+3. If searching on the full Global Search page while filtered to **Current courses**, switch to **Search everything** (or use the **Users** filter tab). In Typesense Pro's live Navbar InstantSearch (`v1.1.6+`), the dropdown defaults to **Search everything** and automatically falls back to **Search everything** if a restricted scope returns 0 matches.
 
----
+### Does running a re-index slow down or lock my browser session?
+No. All indexing, status polling, category detection, and search pages release your Moodle browser session immediately so you can continue navigating other Moodle pages while indexing runs in the background.
 
-## 4. CLI Administration Commands
-
-### Verify Server Readiness & Fast Re-index a Single Area
-```bash
-sudo -u apache php -r '
-define("CLI_SCRIPT", true);
-require("/var/www/html/config.php");
-$engine = new \search_typesense\engine();
-print_r($engine->fast_reindex_area("mod_book-chapter", 250, true));
-'
-```
-
-### Queue All Enabled Search Areas for Background Cron Indexing
-Navigate to **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense $\rightarrow$ Fast Area Re-index (NDJSON)** (`/search/engine/typesense/reindex_areas.php`) and click **Run all areas in Background**.
-
-### Run Pending Background Ad-hoc Re-index Tasks via CLI
-```bash
-sudo -u apache php /var/www/html/admin/cli/adhoc_task.php \
-  --classname='\search_typesense\task\fast_reindex_area_adhoc_task' \
-  --execute
-```
-
----
-
-## 5. Troubleshooting Runbook
-
-### Issue 1: Clicking Re-index or Searching Seems to Lock Other Browser Tabs
-- **Cause (Fixed in `v1.1.7+`):** PHP's default session handler holds an exclusive lock on the user's session until `write_close()` is called.
-- **Resolution:** Ensure you are running `search_typesense` `v1.1.7+`. All entry points (`reindex_areas.php`, `infer_categories.php`, `query.php`, `ajax_instant.php`, and `ajax_overview.php`) call `\core\session\manager::write_close()` before executing Typesense or AI operations.
-
-### Issue 2: Typing a Student ID Prefix (e.g., `9999`) Does Not Show the Matching User
-- **Cause (Fixed in `v1.1.9+`):** Typesense's default prefix-expansion candidate cap (`max_candidates = 4`) can be exhausted when forum posts contain numeric tokens starting with the same digits (`99.99%`, `99990`), or 1-typo phone numbers can rank ahead of 10-digit student ID prefixes.
-- **Resolution:** Ensure `search_typesense` `v1.1.9+` and `local_typesensepro` `v1.1.7+` are installed, and verify that:
-  1. `idnumber` is selected in **Searchable user profile fields** (`search_typesense/userprofilefields`).
-  2. The searching user holds `moodle/site:viewuseridentity` or `moodle/user:viewalldetails`.
-  3. If using InstantSearch in a restricted scope (`Current courses`), note that InstantSearch defaults to **`Search everything`** (`v1.1.6+`) and automatically falls back to `Search everything` when a restricted scope returns 0 hits.
-
-### Issue 3: "Unbuilt Context Paths Detected" Warning on `reindex_areas.php`
-- **Cause:** Orphaned rows in `{course_modules}`, `{block_instances}`, or `{context}` (`path IS NULL OR depth = 0`) left behind by previously deleted courses.
-- **Resolution:** Click **Repair missing context paths** at the top of `/search/engine/typesense/reindex_areas.php`. This runs `engine::repair_unbuilt_contexts()`, which removes orphaned context rows whose parent course no longer exists and calls `\context_helper::build_all_paths(false)`.
-
-### Issue 4: "Newest Document Indexed" Shows `Never` or `0` Docs for an Area
-- **Cause:** The search area has not yet been indexed into Typesense, or has 0 records in the Moodle database (e.g., an activity module not used in any course).
-- **Resolution:** Click **Run in Background** next to the search area on `/search/engine/typesense/reindex_areas.php`. If the Moodle table itself has 0 rows, `Last Run` will update to the current timestamp while `Docs in Typesense` remains `0`.
+### What happens if the Typesense server is temporarily offline or rebooting?
+Moodle uses a fast 2-second connection timeout when contacting Typesense. If the Typesense server is unreachable, Moodle administration pages remain responsive and display a clear connection status message on the **Manage global search** page.

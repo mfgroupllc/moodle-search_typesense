@@ -1,119 +1,88 @@
-# Changelog — `local_typesensepro`
+# Release Notes — Typesense Pro (`local_typesensepro`)
 
-All notable changes to **Typesense Pro (`local_typesensepro`)** for Moodle are documented in this file.
-
----
-
-## [1.1.7] - 2026-11-10 (`2026111004`)
-
-### Added & Fixed
-- **Priority User Profile & Student ID (`idnumber`) Lookup in InstantSearch (`\local_typesensepro\instant_engine::search_instant`):**
-  - Integrated `prepend_priority_users()` into `instant_engine::search_instant()` and raised default candidate prefix expansion (`max_candidates => 200`).
-  - Typing a numeric student ID prefix (such as `9999` for `idnumber = 9999999998`) or a student/staff name (`"Sam Hutchens"` $\rightarrow$ `"Sam Hutchins"`) in the live navbar InstantSearch dropdown immediately surfaces the matching user profile at the top of results.
-- **Standardized on American (US) English (`lang/en/local_typesensepro.php`, `classes/*`, `README.md`, `CHANGELOG.md`):**
-  - Updated all user-facing language strings, AI rationale strings, comments, docblocks, and documentation from UK/AU spellings (`authorised`, `analyses`, `analyser`, `enrolment`, `normalised`, `Synthesised`, `Synchronise`, `Customise`, `Serialised`, `acknowledgements`) to American (US) English (`authorized`, `analyzes`, `analyzer`, `enrollment`, `normalized`, `Synthesized`, `Synchronize`, `Customize`, `Serialized`, `acknowledgments`) and updated `instant_noresults` to `"No matching results found in this scope."`.
+All notable updates to **Typesense Pro (`local_typesensepro`)** for Moodle are documented below.
 
 ---
 
-## [1.1.6] - 2026-11-10 (`2026111003`)
+## [1.1.7] - 2026-11-10
 
 ### Added & Improved
-- **InstantSearch Defaults to `"Search everything"` with Automatic 0-Hit Scope Fallback (`\local_typesensepro\instant_widget`, `ajax_instant.php`):**
-  - Placed **Search everything** (`all`) as the first and default scope pill in the live InstantSearch dropdown so users typing a student number, user name, or historical course code immediately get results without having to switch scopes first.
-  - Added automatic 0-hit fallback in `ajax_instant.php`: if a user selects a restricted scope (`Current courses`, `Historical / other courses`, or `Video Time`) and their query returns 0 hits in that scope, InstantSearch automatically retries against `Search everything` and updates the active scope pill in the UI.
-  - Added `\core\session\manager::write_close()` in `ajax_instant.php` so live keystroke requests never contend on the user's PHP session lock.
-- **Date- & Cohort-Aware AI Category Classifier (`\local_typesensepro\ai_classifier`):**
-  - Updated `ai_classifier::classify_categories()` and `classify_category_heuristic()` to pass active-dated course counts (`activedatedcourses`), expired course counts (`expiredcourses`), and cohort term codes into both the heuristic scorer and the `core_ai` prompt, noting when expired courses inside a shared folder are automatically excluded by start/end date.
+- **Priority Student ID (`idnumber`) & User Profile Lookup in InstantSearch:**
+  - Typing a numeric student ID prefix (such as `9999` for `9999999998`) or a student/staff name in the live navbar InstantSearch dropdown now immediately surfaces the matching user profile at the top of the dropdown.
+- **Standardized American (US) English:**
+  - Updated all user-facing language strings, AI category rationales, and documentation to American (US) English.
 
 ---
 
-## [1.1.5] - 2026-11-10 (`2026111002`)
+## [1.1.6] - 2026-11-10
+
+### Added & Improved
+- **InstantSearch Defaults to `"Search everything"` with Automatic 0-Hit Fallback:**
+  - Placed **Search everything** as the first and default scope pill in the live InstantSearch dropdown so users typing a student ID number, user name, or course code get results immediately.
+  - If a user switches to a restricted scope pill (**Current courses**, **Historical / other courses**, or **Video Time**) and a search returns 0 matches in that scope, InstantSearch automatically falls back to **Search everything** and highlights the pill.
+- **Date- & Cohort-Aware AI Category Rationales:**
+  - Enhanced AI category classifications on the **Active Course Categories** page to include active-dated course counts, cohort term codes, and notes when expired courses inside a shared folder are automatically excluded by start/end date.
+
+---
+
+## [1.1.5] - 2026-11-10
 
 ### Fixed & Improved
-- **Automatic `core_ai` Policy Registration on Explicit User Trigger (`\local_typesensepro\embedding_client::can_user_use_core_ai`):**
-  - Fixed an issue where clicking **"Generate AI Overview from these results"** returned empty for users who had not previously opened a TinyMCE AI modal to accept Moodle's AI policy; clicking the explicit AI Overview trigger now automatically records `user_policy_accepted()` in `{ai_policy_register}` so `aiprovider_gemini` / `core_ai` executes immediately.
-- **Nested Admin Settings Category Integration (`settings.php`):**
-  - Attached the **Typesense Pro (AI & InstantSearch)** settings page to `search_typesense_category` under **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense**.
+- **Seamless AI Overview Generation on First Click:**
+  - Clicking **"Generate AI Overview from these results"** now automatically registers the user's explicit AI policy acceptance in Moodle so the overview generates immediately without requiring the user to open a separate text editor modal first.
+- **Unified Admin Settings Navigation:**
+  - Integrated **Typesense Pro (AI & InstantSearch)** into the main **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense** category.
 
 ---
 
-## [1.1.4] - 2026-11-10 (`2026111001`)
+## [1.1.4] - 2026-11-10
 
-### Added & Refined
-- **Smart Message Noise & Broadcast Inference Engine (`\local_typesensepro\message_classifier`):**
-  - Automatically infers meaningful instructor-student messages while filtering out archived historical terms (`messageretentiondays`, default 180 days using $O(\log N)$ binary PK lookup), trivial 1–2 word acknowledgments (`messageminchars`, default 20 chars), automated Moodle system notifications, and redundant copies of mass class broadcasts (`messagemaxfanout`, default 25 copies per sender).
-- **Refined AI Overview Button & Source Attribution (`lang/en/local_typesensepro.php`, `\local_typesensepro\rag_summariser`):**
-  - Simplified the on-demand trigger button label to **`"Generate AI Overview from these results"`** and updated the AI Overview card footer to explain that the overview is synthesized from the top most relevant authorized results on the page.
-- **Guided Discovery Example Chips (`\local_typesensepro\message_classifier::render_discovery_guide`):**
-  - Displays clickable example search chips (*Inside Uploaded PDFs & Recipes*, *Inside VideoTime Lectures*, *Inside Rubrics & Syllabi*, and *Ask AI Overview*) when users open Global Search (`enablediscoveryguide`).
-- **Strict `AND` Multi-Term Narrowing in InstantSearch (`\local_typesensepro\instant_engine`):**
-  - Enabled `drop_tokens_threshold => 0` and `prioritize_token_position => 'true'` in live typeahead queries.
+### Added & Improved
+- **Smart Message Noise & Broadcast Filtering:**
+  - Automatically keeps message search clean by filtering out old archived messages, trivial 1–2 word acknowledgments, automated system notifications, and duplicate copies of mass class announcements.
+- **Guided Discovery Example Cards:**
+  - Displays clickable example search chips when opening Global Search before entering a query.
+- **Strict Multi-Term Narrowing in InstantSearch:**
+  - Entering multiple words in the live navbar dropdown narrows results to items containing all entered terms.
 
 ---
 
-## [1.1.3] - 2026-11-10 (`2026111000`)
+## [1.1.3] - 2026-11-10
 
 ### Changed
-- **Dedicated Typesense Pro Settings Sub-Page (`settings.php`, `\local_typesensepro\plugin::populate_pro_settings_page`):**
-  - Moved Typesense Pro settings onto their own dedicated administration sub-page (`/admin/settings.php?section=local_typesensepro_settings`) under **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense Pro (AI & InstantSearch)**, integrated with `\search_typesense\admin_nav` tabs across all Typesense administration pages and `/local/typesensepro/analytics.php`.
+- **Dedicated Typesense Pro Administration Tab:**
+  - Moved all Typesense Pro settings onto a dedicated **Typesense Pro (AI & InstantSearch)** tab alongside the core Typesense administration pages and **Search Analytics** dashboard.
 
 ---
 
-## [1.1.2] - 2026-11-09 (`2026110902`)
+## [1.1.2] - 2026-11-09
 
-### Added
-- **Dedicated Embedding Consent & API Settings (`\local_typesensepro\plugin::extend_settings`):**
-  - Registered `local_typesensepro/embeddingconsent` (`admin_setting_configcheckbox`), `local_typesensepro/embeddingapikey` (`admin_setting_configpasswordunmask`), and `local_typesensepro/embeddingendpoint` (`admin_setting_configtext` with `PARAM_URL`).
-
-### Changed & Fixed (Moodle Marketplace Review `MMRT-273`)
-- **Language Strings (`lang/en/local_typesensepro.php`):** Added required `cachedef_rag_summaries`, `cachedef_query_embeddings`, and `cachedef_historical_intent` strings for `db/caches.php`, plus localized CSV export headers (`analytics_csv_col_*`).
-- **Strict `core_ai` Enforcement & Dedicated Embedding Credentials (`\local_typesensepro\embedding_client`, `\local_typesensepro\rag_summariser`, `\local_typesensepro\ai_classifier`):**
-  - Removed `embedding_client::chat_completion()` and all cross-plugin credential lookups (`aiprovider_openai`, `aiprovider_azureai`, `aiprovider_gemini`).
-  - AI Overviews and AI Category Classification now execute exclusively through Moodle's `core_ai` subsystem (`\core_ai\aiactions\generate_text`), enforcing per-context action checks and user AI policy acceptance (`get_user_policy_status()`).
-  - Vector embeddings (`embed_texts()`, `embed_query()`) require `enablehybridsearch`, explicit admin consent (`embeddingconsent`), and `local_typesensepro`'s own dedicated `embeddingapikey`.
-- **Prompt Injection Hardening (`\local_typesensepro\rag_summariser::generate_summary`):**
-  - Wrapped the user query in `<user_query>` and each source excerpt in `<untrusted_source index="...">` blocks with explicit system instructions to treat them strictly as untrusted quotations.
-- **Privacy API Completeness (`\local_typesensepro\privacy\provider`):**
-  - Added `queryhash`, `limited`, and `historicalhits` to `provider::get_metadata()` and `provider::export_user_data()`.
-  - Updated `privacy:metadata:ai_provider` and `README.md` to explicitly disclose background document embedding payloads (`title`, `description1`, and first `2,000` characters of `content` within the configured `embeddingscope`).
-- **CSV Formula Injection Protection (`analytics.php`):**
-  - Localized CSV headers via `get_string()` and prefixed exported query strings starting with `=`, `+`, `-`, `@`, `\t`, or `\r` with a single quote `'`.
+### Added & Hardened
+- **Dedicated Hybrid Embedding Consent & Credentials:**
+  - Added explicit administrator consent and dedicated API endpoint/key settings for optional Hybrid Semantic Search, while routing AI Overviews and AI Category Classification through Moodle's native `core_ai` subsystem.
+- **Prompt Injection Hardening & CSV Export Protection:**
+  - Added XML source isolation for AI Overviews and spreadsheet formula sanitization for CSV analytics exports.
 
 ---
 
-## [1.1.1] - 2026-11-09 (`2026110901`)
+## [1.1.1] - 2026-11-09
 
 ### Added
-- **InstantSearch Course & Template Priority Surfacing (`\local_typesensepro\instant_engine`):**
-  - Automatically surfaces up to 3 accessible matching courses and course templates (`core_course-course`) to the top of the InstantSearch dropdown across categories.
-  - Normalizes leading/embedded underscore query tokens (`_points`, `PA105_Primary`) during live typeahead.
-  - Enforces `search_typesense/restrictusersearch` so students cannot query or view `core_user-user` results in InstantSearch when restricted.
+- **Priority Course & Template Surfacing in InstantSearch:**
+  - Surfaces up to 3 matching courses and course templates at the top of the live InstantSearch dropdown and enforces student user-search restrictions.
 
 ---
 
-## [1.1.0] - 2026-11-09 (`2026110900`)
+## [1.1.0] - 2026-11-09
 
 ### Added
-- **Live Type-As-You-Go Navbar InstantSearch (`\local_typesensepro\instant_engine`, `\local_typesensepro\instant_widget`, `ajax_instant.php`):**
-  - Turns Moodle's top navbar search bar and global search input into a live ~30–50ms typeahead dropdown with 100% Moodle permission enforcement (`check_access()`, group, and role checks).
-  - **Interactive Scope Pills Inside Dropdown:** Switch between `Search everything`, `Current courses`, `Historical / other courses`, and `Video Time` directly inside the live dropdown without leaving the current page.
-  - **Native Moodle Theme Styling:** Automatically inherits the active Moodle theme's Bootstrap 5 button classes (`.btn-primary`, `.btn-outline-secondary`), CSS variables, and primary brand palette.
-  - **Rich Result Cards & Keyboard Navigation:** Displays `<mark>` highlighted titles and snippets, course and activity area badges, role-checked user identity badges, `↑`/`↓`/`Enter`/`Esc` keyboard navigation, and a 1-click **✨ AI Overview** jump button.
-  - **Typesense `SITEID` Split-Query Optimization:** Separates site-level (`courseid: 1`) candidate queries from active course ID filters to avoid large bitmap union overhead on sites with 40,000+ user records.
-  - **Admin Settings (`enableinstantsearch`, `instantshowai`, `instantshowlatency`):** Toggle InstantSearch, the AI Overview jump button, and the optional latency badge.
+- **Live Type-As-You-Go Navbar InstantSearch:**
+  - Added a live, permission-safe typeahead dropdown to Moodle's top navbar search bar and Global Search input with interactive scope pills, highlighted snippets, keyboard navigation, and a 1-click **✨ AI Overview** jump button.
 
 ---
 
-## [1.0.0] - 2026-11-08 (`2026110802`)
+## [1.0.0] - 2026-11-08
 
 ### Added
-- **Permission-Safe AI Overviews with Clickable Citations (`\local_typesensepro\rag_summariser`, `ajax_overview.php`):**
-  - Synthesizes top permission-verified search results into a 2–4 sentence summary with clickable `[1] [2]` source citations in ~700–800ms.
-  - Connects directly to Moodle's built-in AI subsystem (`core_ai`) supporting Google Gemini (`aiprovider_gemini`, including free tier), OpenAI (`aiprovider_openai`), and Azure AI (`aiprovider_azureai`).
-- **Scope-Aware Hybrid Semantic Search (`\local_typesensepro\embedding_client`, `generate_embeddings_adhoc_task`):**
-  - Combines keyword scoring (`text_match`) with 1536-dim semantic vector search (`vector_query`) while restricting background embeddings to active courses by default to cut AI token costs by 85–90%.
-- **AI Category Classifier, Term Auto-Rollover & Historical Intent Banner (`\local_typesensepro\ai_classifier`, `\local_typesensepro\historical_intent`):**
-  - Analyzes category hierarchies and academic term codes (`FA26`, `SP27`, `2605`), adds confidence badges (`AI: 96% Active`) and rationales to the *Infer Active Categories* tool, and rolls over active categories via scheduled task (`sync_active_categories_task`).
-  - Displays a 1-click spillover banner when a user searches for a past term code while in the `Current courses` scope.
-- **Search Analytics & Zero-Result Insights Dashboard (`analytics.php`, `\local_typesensepro\analytics_logger`):**
-  - Admin dashboard tracking total searches, p50 / p95 search latency, zero-result rate, top zero-result queries in current courses, and historical spillover queries, with CSV export and GDPR-compliant automatic log pruning (`cleanup_analytics_task`).
+- **Initial Release:**
+  - Permission-safe **AI Overviews** with clickable `[1] [2]` source citations, **Scope-Aware Hybrid Semantic Search**, **AI Category Classification & Term Auto-Rollover**, **Historical Cohort Spillover Banner**, and the **Search Analytics & Zero-Result Insights Dashboard**.

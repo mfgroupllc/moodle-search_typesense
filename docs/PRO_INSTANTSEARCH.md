@@ -1,64 +1,63 @@
-# InstantSearch & Guided Discovery (`local_typesensepro`)
+# Live Navbar InstantSearch & Guided Discovery (`Typesense Pro`)
 
-This guide explains the architecture, scope behavior, priority ranking, and configuration of **Live Type-As-You-Go Navbar InstantSearch** and **Guided Discovery** in `local_typesensepro`.
-
----
-
-## 1. How Live Navbar InstantSearch Works
-
-Unlike client-side search widgets that expose a Typesense API key directly to the browser (which would bypass Moodle's per-course, per-group, and per-activity access checks), `local_typesensepro` keeps your Typesense server strictly inside your private network:
-
-1. **Hook Injection (`\local_typesensepro\hook_callbacks::before_footer_html_generation`):**
-   - Renders `\local_typesensepro\instant_widget::render()` once per page for authenticated users who hold `moodle/search:query`.
-   - Attaches a lightweight Vanilla ES6 controller (`120 ms` keystroke debounce + `AbortController` request cancellation) to Moodle's top navbar search input (`input[name="q"]`) and the Global Search page input.
-2. **Session-Free AJAX Endpoint (`/local/typesensepro/ajax_instant.php`):**
-   - Validates the logged-in user and immediately releases the PHP session lock (`\core\session\manager::write_close()`) so rapid typing never blocks concurrent page navigation.
-3. **Permission-Safe Candidate Engine (`\local_typesensepro\instant_engine`):**
-   - Extends `\search_typesense\candidate_engine` with low-latency parameters (`BATCH_SIZE = 15`, `MAX_CANDIDATES = 45`, `TIME_BUDGET = 2` seconds, `max_candidates = 200`).
-   - Every returned item passes `candidate_data()`, `matches_filters()`, `context_allows()`, and `$area->check_access()`, plus role-aware `user_profile_fields` capability checks.
+**Typesense Pro (`local_typesensepro`)** upgrades Moodle's top navigation search bar and Global Search page with a live, type-as-you-go dropdown and interactive discovery prompts—without requiring any AI API keys or exposing your Typesense server to the public internet.
 
 ---
 
-## 2. Scope Pills & Automatic 0-Hit Fallback
+## 1. Live Type-As-You-Go Navbar InstantSearch
 
-Inside the live InstantSearch dropdown, users can switch scopes with a single click:
-1. **`Search everything` (`all` — Default First Pill):** Searches across all courses, activities, books, resources, and—for authorized staff—user profiles (`core_user-user`).
-2. **`Current courses` (`current`):** Restricts results to courses inside active categories (`search_typesense/currentcategories`, excluding completed cohorts and expired courses).
-3. **`Historical / other courses` (`historical`):** Restricts results to past/archived courses.
-4. **`Video Time` (`videotime`):** Appears automatically when `mod_videotime` is installed and enabled, filtering strictly to Video Time activities and transcripts.
+As soon as a user clicks the search icon in Moodle's top navbar and begins typing (2 or more characters), a live results dropdown appears in milliseconds:
 
-### Automatic 0-Hit Scope Fallback
-If a user selects a restricted scope pill (`Current courses`, `Historical / other courses`, or `Video Time`) and types a query (such as a student ID number `9999` or an archived course code) that returns **0 authorized hits** in that restricted scope:
-- `ajax_instant.php` automatically re-runs `search_instant($q, 'all', $limit)`.
-- If matches exist in `Search everything`, the response returns `fallbackscope = 'all'`, automatically switches the active scope pill in the dropdown to **`Search everything`**, and displays the matching results immediately.
+- **100% Moodle Permission Safe:** Every item in the live dropdown is verified against the current user's Moodle course enrollments, activity visibility, group memberships, and role permissions before it is displayed.
+- **No Public Port Required:** Browsers communicate only with your Moodle web server over standard HTTPS; your Typesense server remains safely inside your private network.
+- **Rich Result Cards:** Shows highlighted matching terms, activity type badges (*Course*, *Book - chapters*, *Video Time*, *Users*, etc.), parent course names, and—for authorized staff—user profile badges (*ID number*, *Email address*, *Phone*).
+- **Full Keyboard Navigation:** Use `↑` and `↓` arrow keys to move through results, `Enter` to open the selected item, or `Esc` to close the dropdown.
 
 ---
 
-## 3. Priority Course & Student ID (`idnumber`) Top-Surfacing
+## 2. Scope Pills & Automatic Fallback
 
-Before running the general multi-area candidate loop, `instant_engine::search_instant()` executes two targeted priority passes (up to `min(3, $limit)` items each):
+At the top of the InstantSearch dropdown, interactive scope pills let users filter live results without leaving their current page:
 
-1. **`prepend_priority_courses()`:** Surfaces matching courses and course templates (`core_course-course`) to the top of the dropdown so typing `"PB101"` or `"PA105-O"` always shows the course shell first.
-2. **`prepend_priority_users()`:**
-   - Queries `areaid:[core_user-user]` with `max_candidates = 500` and `num_typos = 0` first, placing direct prefix matches on `idnumber` (student number) or `title` (full name) into `tier0`.
-   - Falls back to typo-tolerant matching so misspelled names (e.g., `"Sam Hutchens"` $\rightarrow$ `"Sam Hutchins"`) still resolve at the top of the dropdown.
+1. **Search everything *(Default First Pill)*:** Searches across all accessible courses, activities, uploaded files, and—for authorized staff—student ID numbers and user profiles right from the first keystroke.
+2. **Current courses:** Restricts live results to active courses in the current academic term(s).
+3. **Historical / other courses:** Restricts live results to past/archived courses.
+4. **Video Time *(when installed)*:** Filters live results exclusively to Video Time video activities and caption transcripts.
 
----
-
-## 4. `SITEID` Split-Query Optimization
-
-On sites with 40,000+ user profiles (`courseid = SITEID = 1`) and 500+ active courses in `Current courses`, sending a single Typesense query with `courseid:[1, ...500 course IDs...]` forces Typesense to union the 40,000-document `courseid:1` bitmap with 500 course bitmaps on every keystroke.
-
-`instant_engine::search_instant()` eliminates this overhead by:
-- Running `prepend_priority_users()` directly against `areaid:[core_user-user]`.
-- Stripping `SITEID` from the course list in the main course-activity query (`$coursesonlyscope`) and only querying `courseid:[SITEID]` separately if the course-activity pass returns fewer than `$target` hits.
+### Automatic Zero-Hit Fallback
+If a user selects a restricted scope pill (such as **Current courses**) and types a query—like a student ID number (`9999`) or an archived course code—that has `0` matches in that scope, InstantSearch automatically checks **Search everything**, switches the active pill to **Search everything**, and displays the matching results immediately.
 
 ---
 
-## 5. Guided Discovery Chips (`\local_typesensepro\message_classifier::render_discovery_guide`)
+## 3. Priority Course & Student ID Lookup
 
-When `local_typesensepro/enablediscoveryguide` is enabled (default), opening the Global Search page (`/search/engine/typesense/query.php`) before entering a query displays interactive **What you can search** cards with 1-click example chips:
-- **Inside Uploaded PDFs & Recipes:** Searches text extracted from attached `.pdf`, `.docx`, `.pptx`, and `.xlsx` files.
-- **Inside VideoTime Lectures:** Searches spoken video captions (`.vtt` / `.srt`) and video descriptions.
-- **Inside Rubrics & Syllabi:** Searches course books, assignments, and grading guides.
-- **Ask AI Overview:** Demonstrates multi-term natural-language queries with cited AI Overviews.
+InstantSearch automatically surfaces the most direct matches to the top of the dropdown:
+- **Courses & Course Templates:** Typing a course code or shortname (such as `PB101`, `PA105-O`, or `_points`) places the matching course shell at the top of the list ahead of individual forum posts or assignments.
+- **Student ID Numbers & Names (Staff Only):** When authorized staff type a student ID prefix (such as `9999` for `9999999998`), email, or student/instructor name, matching user profiles appear immediately at the top of the dropdown.
+
+---
+
+## 4. Guided Discovery Cards
+
+When users open the full Global Search page before entering a query, **Guided Discovery** displays helpful example search cards showing what they can search across your Moodle site:
+- **Inside Uploaded PDFs & Syllabi**
+- **Inside Video Time Lectures & Captions**
+- **Inside Course Books, Rubrics & Assignments**
+- **Ask AI Overview**
+
+Clicking any example chip runs the search immediately so learners and faculty can see how Global Search works.
+
+---
+
+## 5. Administrator Settings for InstantSearch & Discovery
+
+Configure these options under **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense $\rightarrow$ Typesense Pro (AI & InstantSearch)**:
+
+| Setting | Default | Description |
+| :--- | :--- | :--- |
+| **Enable Typesense Pro features** | Enabled | Master toggle for all Typesense Pro features. |
+| **Enable live navbar InstantSearch** | Enabled | Turns Moodle's top navbar search input and Global Search box into a live type-as-you-go dropdown. |
+| **InstantSearch results limit** | `6` | Maximum number of authorized results shown in the live dropdown (`1`–`10`). |
+| **Show AI Overview button in InstantSearch** | Enabled | Displays a 1-click **✨ AI Overview** link in the dropdown footer when AI Overviews are enabled. |
+| **Show search latency badge** | Disabled | Optional millisecond timing badge (`e.g., 28 ms`) in the dropdown header for administrators testing performance. |
+| **Show Guided Discovery cards on empty search page** | Enabled | Displays clickable example search cards when a user opens the Global Search page before typing a query. |

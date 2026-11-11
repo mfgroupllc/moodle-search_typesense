@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: "Typesense for Moodle"
-  text: "Sub-Second Global Search, InstantSearch & Permission-Safe AI Overviews"
-  tagline: "Complete administrator and developer documentation for search_typesense (Free Core Engine v1.1.9) and local_typesensepro (Typesense Pro v1.1.7) on Moodle 4.1 LTS, 4.5 LTS, and Moodle 5.x."
+  text: "Sub-Second Global Search, InstantSearch & AI Overviews"
+  tagline: "Administrator and user documentation for Typesense Search (v1.1.9) and Typesense Pro (v1.1.7) on Moodle 4.1 LTS, 4.5 LTS, and Moodle 5.x."
   image:
     src: /typesense-icon.png
     alt: Typesense for Moodle
@@ -13,36 +13,36 @@ hero:
       text: Getting Started Guide →
       link: /GETTING_STARTED.html
     - theme: alt
-      text: Architecture & Security
-      link: /ARCHITECTURE.html
+      text: Administrator Guide
+      link: /ADMIN_GUIDE.html
     - theme: alt
-      text: Typesense Pro (InstantSearch & AI)
+      text: Typesense Pro Features
       link: /PRO_INSTANTSEARCH.html
 
 features:
-  - title: "Candidate-First Pagination & 100% Moodle Permissions"
-    details: "Eliminates 10+ second context pre-calculation timeouts on large multi-year Moodle instances while enforcing candidate_data(), matches_filters(), context_allows(), and $area->check_access() on every result."
+  - title: "100% Moodle Permission Enforcement"
+    details: "Every search result respects course enrollments, activity visibility, separate groups, and role capabilities—eliminating slow page timeouts on large multi-year sites."
     link: /ARCHITECTURE.html
-  - title: "Priority Course, Template & Student ID (idnumber) Lookup"
-    details: "Surfaces matching courses, templates, and student ID prefixes (e.g., typing 9999 for 9999999998) directly to the top of results via dedicated exact-prefix and typo-tolerant priority passes."
-    link: /ARCHITECTURE.html#_4-priority-top-surfacing-passes
-  - title: "Primary-Key Chunked Fast NDJSON Indexer"
-    details: "Streams activities, active-course forum posts, and messages in pre-joined primary-key chunks with zero get_fast_modinfo() cache thrashing, live AJAX progress tracking, and 100% local PDF/Office file extraction."
-    link: /INDEXING_AND_SCOPES.html
+  - title: "Instant Course & Student ID Lookup"
+    details: "Courses, course templates, and—for authorized staff—student ID numbers and user profiles surface immediately at the top of search results."
+    link: /ARCHITECTURE.html#_2-what-you-can-search
   - title: "Active vs. Historical Course Scopes"
-    details: "Infers active categories from course start/end dates, enrollment velocity, and cohort naming patterns (2605, 2607, FA26), automatically excluding completed cohorts and expired courses."
-    link: /INDEXING_AND_SCOPES.html#_3-active-course-category-inference-date-filtering-search-typesense-course-scope
+    details: "Keep daily search focused on current academic terms while keeping archived cohorts one click away under Historical / other courses."
+    link: /INDEXING_AND_SCOPES.html
+  - title: "Inside Uploaded Files & Video Captions"
+    details: "Searches inside uploaded PDFs, Word documents, PowerPoint slides, Excel spreadsheets, and Video Time caption transcripts locally on your Moodle server."
+    link: /ADMIN_GUIDE.html#_2-content-users-integrations
   - title: "Live Type-As-You-Go Navbar InstantSearch (Pro)"
-    details: "Sub-50ms permission-safe typeahead in Moodle's top navbar defaulting to Search everything with automatic 0-hit scope fallback, scope pills, keyboard navigation, and zero public Typesense port exposure."
+    details: "Interactive typeahead dropdown right in Moodle's top navigation bar with scope pills, highlighted snippets, and automatic fallback when a restricted scope has no hits."
     link: /PRO_INSTANTSEARCH.html
-  - title: "Permission-Safe AI Overviews & Hybrid Vector Search (Pro)"
-    details: "Synthesizes already-authorized search results into cited 2–3 sentence overviews via Moodle core_ai with prompt-injection hardening, plus 1536-dim Hybrid Semantic Search and Search Analytics."
+  - title: "Cited AI Overviews & Search Analytics (Pro)"
+    details: "Generate concise 2–3 sentence AI Overviews with clickable [1] [2] source links from authorized results, plus zero-result and latency analytics."
     link: /PRO_AI_AND_HYBRID.html
 ---
 
-## Ecosystem Overview
+## Plugin Editions
 
-| Plugin | Component | Latest Release | License | Distribution |
-| :--- | :--- | :--- | :--- | :--- |
-| **Typesense Global Search Engine** | `search_typesense` | `v1.1.9` (`2026111006`) | GNU GPL v3+ | [GitHub (`mfgroupllc/moodle-search_typesense`)](https://github.com/mfgroupllc/moodle-search_typesense) |
-| **Typesense Pro (AI & InstantSearch)** | `local_typesensepro` | `v1.1.7` (`2026111004`) | GNU GPL v3+ | [Moodle Marketplace (`local_typesensepro`)](https://marketplace.moodle.com/plugins/local_typesensepro) |
+| Edition | Latest Release | Moodle Support | Availability |
+| :--- | :--- | :--- | :--- |
+| **Typesense Global Search (`search_typesense`)** | `v1.1.9` | Moodle 4.1 LTS, 4.5 LTS, 5.x | Free & Open-Source ([GitHub](https://github.com/mfgroupllc/moodle-search_typesense)) |
+| **Typesense Pro (`local_typesensepro`)** | `v1.1.7` | Moodle 4.5 LTS, 5.x | Commercial Subscription ([Moodle Marketplace](https://marketplace.moodle.com/plugins/local_typesensepro)) |

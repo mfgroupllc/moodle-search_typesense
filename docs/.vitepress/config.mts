@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'Typesense for Moodle',
-  description: 'Official documentation for search_typesense (Free Core Engine) and local_typesensepro (Typesense Pro AI & InstantSearch) for Moodle LMS.',
+  description: 'Administrator and user documentation for Typesense Search (search_typesense) and Typesense Pro (local_typesensepro) for Moodle LMS.',
   base: '/moodle-typesense/docs/',
   cleanUrls: false,
   lastUpdated: false,
@@ -17,29 +17,29 @@ export default defineConfig({
     },
     nav: [
       { text: 'Overview', link: 'https://www.chrismurad.com/moodle-typesense' },
-      { text: 'Getting Started', link: '/GETTING_STARTED' },
+      { text: 'Getting Started', link: '/GETTING_STARTED.html' },
       {
-        text: 'Core Engine (search_typesense)',
+        text: 'Core Search Engine',
         items: [
-          { text: 'Architecture & Security', link: '/ARCHITECTURE' },
-          { text: 'Administrator Guide', link: '/ADMIN_GUIDE' },
-          { text: 'Fast NDJSON Indexing & Scopes', link: '/INDEXING_AND_SCOPES' },
-          { text: 'Operations, AWS & Troubleshooting', link: '/OPERATIONS_AND_TROUBLESHOOTING' },
+          { text: 'How Search & Permissions Work', link: '/ARCHITECTURE.html' },
+          { text: 'Administrator Settings Guide', link: '/ADMIN_GUIDE.html' },
+          { text: 'Indexing & Active Course Scopes', link: '/INDEXING_AND_SCOPES.html' },
+          { text: 'AWS Setup, Sizing & FAQ', link: '/OPERATIONS_AND_TROUBLESHOOTING.html' },
         ],
       },
       {
-        text: 'Typesense Pro (local_typesensepro)',
+        text: 'Typesense Pro',
         items: [
-          { text: 'InstantSearch & Guided Discovery', link: '/PRO_INSTANTSEARCH' },
-          { text: 'AI Overviews (RAG) & Hybrid Search', link: '/PRO_AI_AND_HYBRID' },
-          { text: 'Search Analytics & Privacy', link: '/PRO_ANALYTICS_AND_PRIVACY' },
+          { text: 'Navbar InstantSearch & Discovery', link: '/PRO_INSTANTSEARCH.html' },
+          { text: 'AI Overviews & Hybrid Search', link: '/PRO_AI_AND_HYBRID.html' },
+          { text: 'Search Analytics & Privacy', link: '/PRO_ANALYTICS_AND_PRIVACY.html' },
         ],
       },
       {
-        text: 'Changelogs',
+        text: 'Release Notes',
         items: [
-          { text: 'search_typesense (v1.1.9)', link: '/CHANGELOG_CORE' },
-          { text: 'local_typesensepro (v1.1.7)', link: '/CHANGELOG_PRO' },
+          { text: 'Typesense Search (v1.1.9)', link: '/CHANGELOG_CORE.html' },
+          { text: 'Typesense Pro (v1.1.7)', link: '/CHANGELOG_PRO.html' },
         ],
       },
       { text: 'GitHub', link: 'https://github.com/mfgroupllc/moodle-search_typesense' },
@@ -49,31 +49,31 @@ export default defineConfig({
         text: 'Introduction',
         items: [
           { text: 'Documentation Home', link: '/' },
-          { text: 'Getting Started Guide', link: '/GETTING_STARTED' },
+          { text: 'Getting Started Guide', link: '/GETTING_STARTED.html' },
         ],
       },
       {
-        text: 'Core Engine (search_typesense)',
+        text: 'Core Search Engine',
         items: [
-          { text: 'Architecture & Security Model', link: '/ARCHITECTURE' },
-          { text: 'Administrator & Settings Guide', link: '/ADMIN_GUIDE' },
-          { text: 'Fast NDJSON Indexing & Scopes', link: '/INDEXING_AND_SCOPES' },
-          { text: 'Operations, AWS & Troubleshooting', link: '/OPERATIONS_AND_TROUBLESHOOTING' },
+          { text: 'How Search & Permissions Work', link: '/ARCHITECTURE.html' },
+          { text: 'Administrator Settings Guide', link: '/ADMIN_GUIDE.html' },
+          { text: 'Indexing & Active Course Scopes', link: '/INDEXING_AND_SCOPES.html' },
+          { text: 'AWS Setup, Sizing & FAQ', link: '/OPERATIONS_AND_TROUBLESHOOTING.html' },
         ],
       },
       {
-        text: 'Typesense Pro (local_typesensepro)',
+        text: 'Typesense Pro Add-On',
         items: [
-          { text: 'InstantSearch & Guided Discovery', link: '/PRO_INSTANTSEARCH' },
-          { text: 'AI Overviews (RAG) & Hybrid Search', link: '/PRO_AI_AND_HYBRID' },
-          { text: 'Search Analytics & Privacy', link: '/PRO_ANALYTICS_AND_PRIVACY' },
+          { text: 'Navbar InstantSearch & Discovery', link: '/PRO_INSTANTSEARCH.html' },
+          { text: 'AI Overviews & Hybrid Search', link: '/PRO_AI_AND_HYBRID.html' },
+          { text: 'Search Analytics & Privacy', link: '/PRO_ANALYTICS_AND_PRIVACY.html' },
         ],
       },
       {
         text: 'Release Notes',
         items: [
-          { text: 'search_typesense Changelog', link: '/CHANGELOG_CORE' },
-          { text: 'local_typesensepro Changelog', link: '/CHANGELOG_PRO' },
+          { text: 'Typesense Search Changelog', link: '/CHANGELOG_CORE.html' },
+          { text: 'Typesense Pro Changelog', link: '/CHANGELOG_PRO.html' },
         ],
       },
     ],

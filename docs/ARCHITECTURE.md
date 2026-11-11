@@ -1,121 +1,54 @@
-# Architecture & Security Model (`search_typesense`)
+# How Search & Permissions Work
 
-This document details the internal architecture, permission verification pipeline, priority ranking algorithms, Typesense collection schema, and extension bridge of the **Typesense Global Search Engine (`search_typesense`)** plugin for Moodle.
-
----
-
-## 1. High-Level System Architecture
-
-```mermaid
-flowchart TD
-    User["Moodle User / Browser"] -->|"GET /search/engine/typesense/query.php"| QueryCtrl["Query Controller (query.php)"]
-    QueryCtrl -->|"write_close() session lock"| CandEngine["Candidate Engine (candidate_engine.php)"]
-    
-    subgraph PriorityPasses["1. Priority Top-Surfacing Passes"]
-        CandEngine -->|"Course/Template Lookup"| PrioCourses["prepend_priority_courses()"]
-        CandEngine -->|"Student ID / Name Lookup"| PrioUsers["prepend_priority_users()"]
-    end
-    
-    subgraph CandidateLoop["2. Candidate-First Verification Loop"]
-        CandEngine -->|"HTTPS /collections/{col}/documents/search"| TS["Typesense Server (Port 8108)"]
-        TS -->|"Ranked Candidate Batch (per_page=100)"| Stage1["Stage 1: candidate_data() Integrity Check"]
-        Stage1 --> Stage2["Stage 2: matches_filters() Scope & Area Check"]
-        Stage2 --> Stage3["Stage 3: access_manager::candidate_access() Context & Group Check"]
-        Stage3 --> Stage4["Stage 4: $area->check_access(itemid) Moodle Item Check"]
-    end
-    
-    PrioCourses --> VerifiedDocs["Verified \core_search\document[] Page"]
-    PrioUsers --> VerifiedDocs
-    Stage4 --> VerifiedDocs
-    
-    VerifiedDocs -->|"Optional Hook"| ProBridge["Pro Bridge (pro_bridge.php)"]
-    ProBridge -->|"If local_typesensepro Installed"| ProExt["AI Overview (RAG) / Analytics / Spillover Banner"]
-```
+Typesense for Moodle is designed for universities, colleges, K-12 districts, and training organizations that need fast, typo-tolerant search across years of courses without compromising Moodle's permission model.
 
 ---
 
-## 2. Why Candidate-First Pagination Exists
+## 1. Strict Moodle Permission Enforcement
 
-In Moodle core's default `\core_search\manager::search()` flow, Moodle calls `get_areas_user_accesses()` **before** querying the search backend. On a multi-year institution with 10,000+ courses and 500,000+ course modules:
-1. System-level Managers, Support Staff, or Site Administrators trigger `get_my_courses()` / `get_fast_modinfo()` expansion across thousands of courses.
-2. PHP either exhausts `128 MB` of worker memory or spends 10–30 seconds building an enormous list of context IDs before a single search query reaches the search server.
+Every search result—whether viewed on the full Global Search page, in the Live Navbar InstantSearch dropdown, or inside an AI Overview—is verified against the logged-in user's exact Moodle permissions before it is shown:
 
-### How `candidate_engine` Solves This
-`\search_typesense\candidate_engine` reverses the execution order:
-1. **Narrow by Scope First (`access_manager::scope_courseids()`):** Applies lightweight course scope filters (`Current courses`, `Historical / other courses`, or `Search everything`) and owner visibility (`owneruserid:0 || owneruserid:$USER->id`) directly in Typesense's `filter_by` clause.
-2. **Fetch Ranked Candidates in Batches (`BATCH_SIZE = 100`):** Retrieves the top candidate hits from Typesense (`max_candidates = 200`, `drop_tokens_threshold = 0`, `prioritize_token_position = true`).
-3. **Evaluate Moodle Contexts Strictly on Candidate Courses:** Passes only the distinct `courseid` values present in the current candidate batch into `access_manager::candidate_access($courseids, $filters)`.
-4. **Stop as Soon as the Page Prefix Is Filled:** To render Page `p` (`DISPLAY_RESULTS_PER_PAGE = 10`), the engine stops scanning as soon as `(p + 1) * 10 + 1` authorized documents are verified (the `+ 1` lookahead proves whether `hasmore` is true without leaking unverified backend hit counts).
+- **Course & Enrollment Access:** Users only see content from courses they are enrolled in or permitted to access based on their Moodle roles.
+- **Activity & Section Visibility:** Hidden activities, restricted course sections, and unreleased items are never shown to students.
+- **Group Isolation:** Activities configured for **Separate groups** only return content belonging to the user's own group(s).
+- **Private User Items:** Personal messages and private user records are restricted strictly to their owner.
+- **No Unverified Result Counts:** Result totals only reflect items the current user is authorized to view.
 
 ---
 
-## 3. Four-Stage Permission Verification Pipeline
+## 2. What You Can Search
 
-Every candidate document returned by Typesense must pass four independent checks before it can be converted into a `\core_search\document` or shown to the user:
+### Courses & Course Templates
+- Searching a course title, course code, or shortname (such as `PB101`, `PA105-O`, `_points`, or `Template_V2_Points`) automatically surfaces matching courses and course templates at the top of the results page.
+- Hyphens, underscores, slashes, and periods in course codes are tokenized automatically so users can search with or without punctuation.
 
-| Stage | Method | Security Invariant Enforced |
-| :--- | :--- | :--- |
-| **Stage 1** | `candidate_engine::candidate_data()` | Decodes `docdata` JSON and verifies that `id`, `areaid`, `courseid`, `contextid`, and `owneruserid` in `docdata` exactly match the top-level indexed fields, and that `itemid`, `title`, and `modified` are valid. Rejects malformed or tampered records. |
-| **Stage 2** | `candidate_engine::matches_filters()` | Enforces `owneruserid` (`0` or `$USER->id`), active `areaids` (filtered through `user_profile_fields::filter_allowed_areas()` so restricted students cannot access `core_user-user`), `courseids`, `contextids`, `userids`, `groupids`, and `timestart` / `timeend`. |
-| **Stage 3** | `candidate_engine::context_allows()` & `access_manager::candidate_access()` | Verifies course/activity context visibility (`usercontexts[$areaid][$contextid]`) and Moodle separate-groups isolation (`separategroupscontexts` and `usergroups`). |
-| **Stage 4** | `$area->check_access($data['itemid'])` | Executes Moodle's authoritative per-item permission check in the owning plugin. If `check_access()` returns `ACCESS_DELETED`, the stale document is automatically purged from Typesense via `delete_by_id()`. Only `ACCESS_GRANTED` documents are accepted. |
+### Student ID Numbers & User Profiles (Staff Only by Default)
+- Authorized staff and instructors who hold Moodle user-identity permissions can look up students and colleagues by **Name**, **Student ID / ID number**, **Email address**, **Phone number**, **Department**, **Institution**, or custom profile fields.
+- Typing a student ID prefix (for example, `9999` for student number `9999999998`) or a slightly misspelled name immediately surfaces the matching user profile at the top of the results.
+- By default, **Restrict user profile search to staff** is enabled so students cannot search user profiles or see the **Users** filter tab.
 
----
+### Course Activities & Learning Content
+- Searches across all enabled Moodle search areas, including **Books**, **Pages**, **Folders**, **Files/Resources**, **Assignments**, **Quizzes**, **Forums**, **Glossaries**, **Lessons**, **Wikis**, **Video Time** videos, and more.
+- **Strict Multi-Term Narrowing:** Entering multiple words (such as `PB101 grading rubric` or `poaching pears recipe`) narrows results to items containing all of your search terms.
+- **Typo & Accent Tolerance:** Automatically handles common spelling typos and matches accented characters (`resume` ↔ `résumé`, `naive` ↔ `naïve`, `San Jose` ↔ `San José`).
 
-## 4. Priority Top-Surfacing Passes
-
-When a user searches on Page 1 (`$page === 0`) sorted by relevance, `candidate_engine::search_page()` (and `local_typesensepro\instant_engine::search_instant()`) runs two targeted priority passes before the general multi-area loop:
-
-### 4.1 Course & Template Priority Pass (`prepend_priority_courses()`)
-- Queries `areaid:[core_course-course]` with `query_by = title,description2,description1` and weights `12,10,3`.
-- Separates hits into **`tier0`** (courses in the `Current courses` scope or courses whose title/description contains `template`, `primary`, or `master`) and **`tier1`** (all other accessible courses).
-- Ensures that searching a course code like `"PB101"`, `"PA105-O"`, or `"_points"` always surfaces the course shell itself at the very top of results instead of burying it beneath hundreds of forum posts or assignments inside that course.
-
-### 4.2 User Profile & Student ID Priority Pass (`prepend_priority_users()`)
-- Queries `areaid:[core_user-user]` with `max_candidates = 500` and `query_by = title,useridentity,description1,description2,content` (or without `useridentity` if the viewer lacks identity capabilities).
-- **Pass 1 (Exact Prefix, `num_typos = 0`):** Finds exact prefix matches on student ID numbers (`idnumber`), usernames, emails, and names. Why `num_typos = 0` first? In Typesense, a 4-digit query like `"9999"` has 0 typos against `"9999999998"` (a 10-character token prefix) and 1 typo against a 4-digit phone number segment like `"9991"` in `(440) 999-9169`. Running `num_typos = 0` first guarantees that direct student ID prefix matches (`9999` $\rightarrow$ `9999999998`) are placed in **`tier0`** ahead of phone numbers or forum posts containing `"99.99%"`.
-- **Pass 2 (Typo-Tolerant Fallback):** If fewer than `$maxlimit` exact hits are found, runs a second query with default typo tolerance so slightly misspelled names (such as `"Sam Hutchens"` $\rightarrow$ `"Sam Hutchins"`) match seamlessly.
+### Attached Documents & Video Captions
+- When **Index attached files & documents** is enabled, Moodle extracts and indexes text inside uploaded files attached to course resources, folders, books, forums, and assignments:
+  - **PDF Documents:** `.pdf`
+  - **Microsoft Office & OpenDocument:** `.docx`, `.pptx` (including slide text and speaker notes), `.xlsx`, `.odt`, `.odp`, `.ods`
+  - **Video Captions & Subtitles:** `.vtt`, `.srt` (with cue timestamps stripped automatically so spoken lecture transcripts are searchable)
+  - **Text & Data Files:** `.txt`, `.md`, `.csv`, `.tsv`, `.html`, `.xml`, `.json`
+- All document text extraction runs locally on your Moodle server—files are never sent to an external conversion service.
 
 ---
 
-## 5. Typesense Collection Schema & Tokenization
+## 3. Search Scopes
 
-`client::collection_schema()` defines the Typesense collection schema:
+To prevent years of archived courses from cluttering daily searches, the search interface provides dedicated scope tabs:
 
-| Field | Type | Facet | Optional | Purpose |
-| :--- | :--- | :---: | :---: | :--- |
-| `id` | `string` | No | No | Moodle global search document ID (`{areaid}-{itemid}`) |
-| `areaid` | `string` | Yes | No | Search area identifier (e.g., `core_course-course`, `mod_book-chapter`, `core_user-user`) |
-| `courseid` | `int64` | Yes | No | Owning Moodle course ID (`SITEID = 1` for site/user records) |
-| `contextid` | `int64` | Yes | No | Moodle context ID |
-| `userid` | `int64` | Yes | No | Author user ID (`0` if not applicable) |
-| `owneruserid` | `int64` | Yes | No | Private owner user ID (`0` for shared records, or specific `userid`) |
-| `groupid` | `int64` | Yes | No | Group ID (`0` if not group-restricted) |
-| `modified` | `int64` | No | No | Unix modification timestamp (`default_sorting_field`) |
-| `title` | `string` | No | No | Primary document title |
-| `content` | `string` | No | No | Main body text + locally extracted attached file text (up to 60,000 chars) |
-| `description1` | `string` | No | Yes | Secondary description / course shortname |
-| `description2` | `string` | No | Yes | Extra metadata + normalized `_` / `-` course code tokens |
-| `useridentity` | `string` | No | Yes | Indexed user profile fields (`idnumber`, `email`, `phone`, custom fields) for `core_user-user` |
-| `docdata` | `string` | No | No | Serialized JSON payload used to reconstruct `\core_search\document` |
-| `embedding` | `float[]` | No | Yes | Optional vector embedding (`1536` dims default) added when `local_typesensepro` Hybrid Search is enabled |
-
-### Token Separators
-The collection schema configures:
-```php
-'token_separators' => ['_', '-', '/', '.']
-```
-In addition, `engine::map_document()` expands underscore- and hyphen-delimited tokens in `core_course-course` titles and shortnames into `description2` so queries like `PA105`, `PA105-O`, `_points`, or `V2` match course shells whether the user includes or omits punctuation.
-
----
-
-## 6. Pro Extension Bridge (`\search_typesense\pro_bridge`)
-
-`search_typesense` is a complete, standalone GPLv3 plugin. It exposes a clean, zero-dependency bridge (`\search_typesense\pro_bridge`) that checks whether `\local_typesensepro\plugin` is installed and enabled:
-- **`extend_schema(array $schema)`:** Allows `local_typesensepro` to append the optional `embedding` (`float[]`) field to the Typesense schema.
-- **`augment_search_params(array $params, \stdClass $filters, ?array $scope, array $areas)`:** Allows Hybrid Semantic Search to attach `vector_query` parameters when enabled.
-- **`after_documents_indexed(array $docs)`:** Notifies the background embedding queue when active-course documents are indexed.
-- **`refine_inferred_categories(array $inferred, int $now)`:** Annotates inferred active categories with AI confidence scores, detected term codes, and plain-English rationales.
-- **`render_search_page_banner(?\stdClass $data, string $scope, ?\stdClass $results, \moodle_url $url)`:** Renders Guided Discovery chips, the 1-click Historical Spillover banner, and the Permission-Safe AI Overview (RAG) card strictly from already-authorized `$results->results`.
-- **`get_message_start_pk()` & `should_index_message()`:** Allows `local_typesensepro` to filter out automated notification noise, trivial 1–2 word replies, and bulk broadcast fan-out during `core_message-*` indexing.
-- **`record_search_telemetry()`:** Logs anonymized/GDPR-compliant search latency and zero-result metrics for the Pro Analytics Dashboard.
+| Scope | What It Searches |
+| :--- | :--- |
+| **Current courses** | Searches active courses in your current academic term(s) and active templates, excluding completed cohorts and expired courses. |
+| **Historical / other courses** | Searches past cohorts and archived courses when faculty or staff need to reference prior terms. |
+| **Search everything** | Searches across all accessible courses (both current and historical) as well as site-wide areas and user profiles. |
+| **Video Time** *(when installed)* | Automatically appears when the `mod_videotime` plugin is installed, filtering results exclusively to Video Time activities and video transcripts. |
