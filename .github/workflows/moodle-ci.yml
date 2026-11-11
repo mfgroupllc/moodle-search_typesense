@@ -1,10 +1,15 @@
 name: Moodle Plugin CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     services:
       postgres:
@@ -29,19 +34,13 @@ jobs:
             database: 'pgsql'
           - php: '8.1'
             moodle-branch: 'MOODLE_401_STABLE'
-            database: 'mariadb'
+            database: 'pgsql'
 
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
         with:
           path: plugin
-
-      - name: Setup MariaDB
-        if: ${{ matrix.database == 'mariadb' }}
-        uses: anmir/setup-mariadb@v3
-        with:
-          mariadb-version: '10.11'
 
       - name: Setup PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2
