@@ -127,8 +127,9 @@ final class course_scope_test extends \advanced_testcase {
         ]);
 
         $ids = course_scope::apply_inferred_categories(false, $now);
-        // Active container rolls up both 2605 and 2607; Archived and Delete Me are excluded.
-        $this->assertContains((int)$active->id, $ids);
+        // Active leaf term categories (2605 and 2607) are selected; Archived and Delete Me are excluded.
+        $this->assertContains((int)$termcurrent->id, $ids);
+        $this->assertContains((int)$termupcoming->id, $ids);
         $this->assertNotContains((int)$archived->id, $ids);
         $this->assertNotContains((int)$deleteme->id, $ids);
 

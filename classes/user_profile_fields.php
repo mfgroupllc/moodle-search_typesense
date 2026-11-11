@@ -402,9 +402,12 @@ class user_profile_fields {
                 if ($val === '') {
                     continue;
                 }
+                $label = method_exists($fieldobj, 'display_name')
+                    ? $fieldobj->display_name(true)
+                    : format_string((string)($fieldobj->field->name ?? $lookup));
                 $visible[] = [
                     'field' => $fieldname,
-                    'label' => $fieldobj->display_name(true),
+                    'label' => $label,
                     'value' => $val,
                 ];
             } else if (in_array($fieldname, self::STANDARD_FIELDS, true)) {
