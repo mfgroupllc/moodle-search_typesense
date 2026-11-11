@@ -24,7 +24,6 @@
 
 namespace search_typesense;
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Renders a consistent Bootstrap nav-tabs bar across all Typesense and Typesense Pro admin sub-pages.

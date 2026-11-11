@@ -24,7 +24,6 @@
 
 namespace search_typesense\output;
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Renders search results without redundant duplicate links on the same card.
@@ -50,8 +49,10 @@ class renderer extends \core_search\output\renderer {
         if (\core_search\manager::is_search_area_categories_enabled() && !empty($cat)) {
             $toprow = [];
             foreach (\core_search\manager::get_search_area_categories() as $category) {
-                if ($category->get_name() === 'core-users' &&
-                        !\search_typesense\user_profile_fields::can_current_user_search_users()) {
+                if (
+                    $category->get_name() === 'core-users' &&
+                        !\search_typesense\user_profile_fields::can_current_user_search_users()
+                ) {
                     continue;
                 }
                 $taburl = clone $url;

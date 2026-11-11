@@ -24,7 +24,6 @@
 
 namespace search_typesense;
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Searches ranked candidates before expanding Moodle course access contexts.
@@ -254,9 +253,10 @@ class candidate_engine extends engine {
      */
     protected function candidate_params(\stdClass $filters, ?array $scope, array $areas): array {
         global $USER;
-        $quoted = array_map(function ($area) {
+        $tick = chr(96);
+        $quoted = array_map(function ($area) use ($tick) {
             // IDs originate in Moodle's enabled search areas, not arbitrary filter input.
-            return '`' . str_replace('`', '', $area) . '`';
+            return $tick . str_replace($tick, '', $area) . $tick;
         }, $areas);
         $clauses = [
             'areaid:[' . implode(',', $quoted) . ']',
@@ -338,8 +338,9 @@ class candidate_engine extends engine {
         if ($explicitscope === null && ($filters->scope ?? '') === 'historical') {
             $coursescope = $currentscope;
         }
+        $tick = chr(96);
         $clauses = [
-            'areaid:[`core_course-course`]',
+            'areaid:[' . $tick . 'core_course-course' . $tick . ']',
             '(owneruserid:0 || owneruserid:' . (int)$USER->id . ')',
         ];
         if ($coursescope !== null) {
@@ -462,8 +463,9 @@ class candidate_engine extends engine {
         if (!$area) {
             return [];
         }
+        $tick = chr(96);
         $clauses = [
-            'areaid:[`' . user_profile_fields::USER_AREA_ID . '`]',
+            'areaid:[' . $tick . user_profile_fields::USER_AREA_ID . $tick . ']',
             '(owneruserid:0 || owneruserid:' . (int)$USER->id . ')',
         ];
         if (!empty($filters->timestart)) {

@@ -38,7 +38,6 @@ namespace search_typesense;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class file_extractor {
-
     /** @var int Default maximum file size in bytes to inspect (20 MB). */
     public const MAX_FILE_SIZE_BYTES = 20971520;
 
@@ -211,8 +210,10 @@ class file_extractor {
             return self::normalize_extracted_text(self::extract_captions($content));
         }
 
-        if (in_array($ext, ['html', 'htm', 'xhtml', 'xml'], true) ||
-                in_array($mimetype, ['text/html', 'application/xhtml+xml', 'application/xml', 'text/xml'], true)) {
+        if (
+            in_array($ext, ['html', 'htm', 'xhtml', 'xml'], true) ||
+                in_array($mimetype, ['text/html', 'application/xhtml+xml', 'application/xml', 'text/xml'], true)
+        ) {
             return self::normalize_extracted_text(self::strip_html_or_xml($content));
         }
 
@@ -572,11 +573,13 @@ class file_extractor {
         }
 
         // Uncompressed ASCII content stream containing PDF text operators or CMap definitions.
-        if (strpos($trimmed, "\x00") === false && (
+        if (
+            strpos($trimmed, "\x00") === false && (
                 strpos($trimmed, 'BT') !== false ||
                 strpos($trimmed, 'Tj') !== false ||
                 strpos($trimmed, 'TJ') !== false ||
-                strpos($trimmed, 'begincmap') !== false)) {
+                strpos($trimmed, 'begincmap') !== false)
+        ) {
             return $trimmed;
         }
 

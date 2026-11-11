@@ -24,7 +24,6 @@
 
 namespace search_typesense;
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Tests for user_profile_fields capability enforcement and custom profile field visibility.
@@ -137,7 +136,8 @@ final class user_profile_fields_test extends \advanced_testcase {
         $studentkeys = array_column($studentfields, 'field');
         $this->assertSame(['profile_field_campus'], $studentkeys);
 
-        // 2. Course editingteacher: has moodle/site:viewuseridentity in shared course, sees idnumber, email, department, and both custom fields.
+        // 2. Course editingteacher: has moodle/site:viewuseridentity in shared course,
+        // so sees idnumber, email, department, and both custom fields.
         $this->setUser($teacher);
         $this->assertTrue(user_profile_fields::can_current_user_query_identity());
         $teacherfields = user_profile_fields::get_visible_fields_for_user($target->id);

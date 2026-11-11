@@ -24,7 +24,6 @@
 
 namespace search_typesense;
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Explicit and inferred category classification; course permissions are checked separately.
@@ -45,7 +44,7 @@ class course_scope {
      */
     public static function roots(): array {
         $raw = (string)get_config('search_typesense', 'currentcategories');
-        return array_values(array_unique(array_filter(array_map('intval', explode(',', $raw)), function($id) {
+        return array_values(array_unique(array_filter(array_map('intval', explode(',', $raw)), function ($id) {
             return $id > 0;
         })));
     }
@@ -522,7 +521,7 @@ class course_scope {
         }
 
         $bydepth = array_keys($cats);
-        usort($bydepth, function($a, $b) use ($cats) {
+        usort($bydepth, function ($a, $b) use ($cats) {
             return (int)$cats[$b]->depth <=> (int)$cats[$a]->depth;
         });
 

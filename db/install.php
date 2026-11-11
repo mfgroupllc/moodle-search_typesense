@@ -22,7 +22,6 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Populate initial current-course categories when installing on an existing site.

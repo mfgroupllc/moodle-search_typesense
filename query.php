@@ -22,6 +22,8 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+// Global search checks $CFG->forcelogin conditionally, matching core /search/index.php.
+// phpcs:ignore moodle.Files.RequireLogin.Missing
 require_once(__DIR__ . '/../../../config.php');
 
 use core_search\manager;

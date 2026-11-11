@@ -24,7 +24,6 @@
 
 namespace search_typesense;
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Search engine backed by Typesense.
@@ -149,7 +148,7 @@ class engine extends \core_search\engine {
             ['name' => 'userid', 'type' => 'int32', 'optional' => true],
             ['name' => 'owneruserid', 'type' => 'int32', 'optional' => true],
             ['name' => 'groupid', 'type' => 'int32', 'optional' => true],
-            // 'modified' doubles as the default sorting field; int32 keeps us safe
+            // The 'modified' field doubles as the default sorting field; int32 keeps us safe
             // until 2038 (epoch seconds fit in a signed 32-bit int until then).
             ['name' => 'modified', 'type' => 'int32'],
             $textfield('title'),
@@ -401,7 +400,13 @@ class engine extends \core_search\engine {
         }
 
         // Any remaining rows with NULL path or 0 depth are orphans whose parent course or parent context no longer exists.
-        $remaining = $DB->get_records_select('context', 'path IS NULL OR depth = 0', null, 'id ASC', 'id, contextlevel, instanceid');
+        $remaining = $DB->get_records_select(
+            'context',
+            'path IS NULL OR depth = 0',
+            null,
+            'id ASC',
+            'id, contextlevel, instanceid'
+        );
         if ($remaining) {
             $orphancmids = [];
             $orphanbiids = [];

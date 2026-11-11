@@ -27,7 +27,6 @@
 
 namespace search_typesense;
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Typesense API client.
@@ -61,7 +60,7 @@ class client {
         $this->protocol = $protocol;
         $this->apikey = $apikey;
         $this->verifytls = (bool)$verifytls;
-        // \curl is defined in lib/filelib.php. The web bootstrap loads it, but
+        // The \curl class is defined in lib/filelib.php. The web bootstrap loads it, but
         // the CLI bootstrap (e.g. the search indexer) does not, so ensure it is
         // available in both contexts.
         global $CFG;

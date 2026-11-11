@@ -26,7 +26,6 @@ namespace search_typesense\privacy;
 
 use core_privacy\local\metadata\collection;
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Privacy provider declaring external Typesense index communication.
@@ -38,7 +37,6 @@ defined('MOODLE_INTERNAL') || die();
 class provider implements
     \core_privacy\local\metadata\provider,
     \core_privacy\local\request\subsystem\plugin_provider {
-
     /**
      * Returns metadata about external data sent to the Typesense server.
      *

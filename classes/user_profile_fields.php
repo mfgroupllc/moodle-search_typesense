@@ -24,7 +24,6 @@
 
 namespace search_typesense;
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Resolves configured user profile fields for Typesense indexing and permission-safe display.
@@ -131,8 +130,10 @@ class user_profile_fields {
                 }
                 continue;
             }
-            if (in_array($item, self::STANDARD_FIELDS, true) ||
-                    strpos($item, self::PROFILE_FIELD_PREFIX) === 0) {
+            if (
+                in_array($item, self::STANDARD_FIELDS, true) ||
+                    strpos($item, self::PROFILE_FIELD_PREFIX) === 0
+            ) {
                 $resolved[$item] = $item;
             }
         }
@@ -150,7 +151,7 @@ class user_profile_fields {
     public static function get_indexable_text_batch(array $userids, string $plugin = 'search_typesense'): array {
         global $CFG, $DB;
 
-        $userids = array_values(array_unique(array_filter(array_map('intval', $userids), function($id) {
+        $userids = array_values(array_unique(array_filter(array_map('intval', $userids), function ($id) {
             return $id > 0;
         })));
         if (!$userids) {
@@ -282,9 +283,11 @@ class user_profile_fields {
             return false;
         }
         $sysctx = \context_system::instance();
-        if (has_capability('moodle/site:viewuseridentity', $sysctx) ||
+        if (
+            has_capability('moodle/site:viewuseridentity', $sysctx) ||
                 has_capability('moodle/user:viewalldetails', $sysctx) ||
-                has_capability('moodle/user:viewhiddendetails', $sysctx)) {
+                has_capability('moodle/user:viewhiddendetails', $sysctx)
+        ) {
             return true;
         }
         return self::has_identity_capability_in_any_context();
@@ -309,9 +312,11 @@ class user_profile_fields {
             return true;
         }
         $sysctx = \context_system::instance();
-        if (has_capability('moodle/site:viewuseridentity', $sysctx) ||
+        if (
+            has_capability('moodle/site:viewuseridentity', $sysctx) ||
                 has_capability('moodle/user:viewalldetails', $sysctx) ||
-                has_capability('moodle/user:viewhiddendetails', $sysctx)) {
+                has_capability('moodle/user:viewhiddendetails', $sysctx)
+        ) {
             return true;
         }
         return self::has_identity_capability_in_any_context();
@@ -451,8 +456,10 @@ class user_profile_fields {
         }
 
         $sysctx = \context_system::instance();
-        if (has_capability('moodle/user:viewalldetails', $sysctx) ||
-                has_capability('moodle/user:viewalldetails', $userctx)) {
+        if (
+            has_capability('moodle/user:viewalldetails', $sysctx) ||
+                has_capability('moodle/user:viewalldetails', $userctx)
+        ) {
             return true;
         }
 
@@ -488,8 +495,10 @@ class user_profile_fields {
                 if ((int)$user->maildisplay === \core_user::MAILDISPLAY_EVERYONE) {
                     return true;
                 }
-                if ((int)$user->maildisplay === \core_user::MAILDISPLAY_COURSE_MEMBERS_ONLY &&
-                        enrol_sharing_course($user, $USER)) {
+                if (
+                    (int)$user->maildisplay === \core_user::MAILDISPLAY_COURSE_MEMBERS_ONLY &&
+                        enrol_sharing_course($user, $USER)
+                ) {
                     return true;
                 }
                 return false;
@@ -525,8 +534,10 @@ class user_profile_fields {
         }
         if ((string)($fieldobj->field->visible ?? '') === (string)PROFILE_VISIBLE_TEACHERS) {
             $sysctx = \context_system::instance();
-            if (has_capability('moodle/site:viewuseridentity', $sysctx) ||
-                    self::has_shared_course_capability($userid, 'moodle/site:viewuseridentity')) {
+            if (
+                has_capability('moodle/site:viewuseridentity', $sysctx) ||
+                    self::has_shared_course_capability($userid, 'moodle/site:viewuseridentity')
+            ) {
                 return true;
             }
         }
@@ -583,9 +594,11 @@ class user_profile_fields {
         foreach ($courses as $course) {
             \context_helper::preload_from_record($course);
             $coursecontext = \context_course::instance($course->id, IGNORE_MISSING);
-            if ($coursecontext && (has_capability('moodle/site:viewuseridentity', $coursecontext) ||
+            if (
+                $coursecontext && (has_capability('moodle/site:viewuseridentity', $coursecontext) ||
                     has_capability('moodle/user:viewalldetails', $coursecontext) ||
-                    has_capability('moodle/user:viewhiddendetails', $coursecontext))) {
+                    has_capability('moodle/user:viewhiddendetails', $coursecontext))
+            ) {
                 $cached[$uid] = true;
                 return true;
             }
@@ -597,9 +610,11 @@ class user_profile_fields {
                 continue;
             }
             $ctx = \context::instance_by_id($ctxid, IGNORE_MISSING);
-            if ($ctx && (has_capability('moodle/site:viewuseridentity', $ctx) ||
+            if (
+                $ctx && (has_capability('moodle/site:viewuseridentity', $ctx) ||
                     has_capability('moodle/user:viewalldetails', $ctx) ||
-                    has_capability('moodle/user:viewhiddendetails', $ctx))) {
+                    has_capability('moodle/user:viewhiddendetails', $ctx))
+            ) {
                 $cached[$uid] = true;
                 return true;
             }

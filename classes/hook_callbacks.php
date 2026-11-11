@@ -24,7 +24,6 @@
 
 namespace search_typesense;
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Routes browser searches to the optional plugin controller.
@@ -93,7 +92,7 @@ class hook_callbacks {
                 $itemtype = ($name === 'areaids') ? PARAM_ALPHANUMEXT : PARAM_INT;
                 $raw = optional_param($name, '', PARAM_RAW);
                 if ($raw !== '') {
-                    $cleaned = array_filter(clean_param_array(explode(',', (string)$raw), $itemtype), static function($v) {
+                    $cleaned = array_filter(clean_param_array(explode(',', (string)$raw), $itemtype), static function ($v) {
                         return $v !== '' && $v !== 0;
                     });
                     if ($cleaned) {
@@ -123,12 +122,16 @@ class hook_callbacks {
     public static function after_config(\core\hook\after_config $hook): void {
         global $CFG, $SCRIPT;
 
-        if ((defined('CLI_SCRIPT') && CLI_SCRIPT) || (defined('AJAX_SCRIPT') && AJAX_SCRIPT)
-                || during_initial_install() || isset($CFG->upgraderunning)) {
+        if (
+            (defined('CLI_SCRIPT') && CLI_SCRIPT) || (defined('AJAX_SCRIPT') && AJAX_SCRIPT)
+                || during_initial_install() || isset($CFG->upgraderunning)
+        ) {
             return;
         }
-        if ($SCRIPT !== '/search/index.php' || data_submitted()
-                || !self::is_enabled()) {
+        if (
+            $SCRIPT !== '/search/index.php' || data_submitted()
+                || !self::is_enabled()
+        ) {
             return;
         }
 

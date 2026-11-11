@@ -24,7 +24,6 @@
 
 namespace search_typesense;
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Reuses Moodle's access checks for courses represented in search candidates.
@@ -134,7 +133,7 @@ class access_manager extends \core_search\manager {
      * @return int[]
      */
     public static function normalise_ids(array $ids): array {
-        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), function($id) {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), function ($id) {
             return $id > 0;
         })));
         sort($ids, SORT_NUMERIC);

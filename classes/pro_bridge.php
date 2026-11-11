@@ -24,7 +24,6 @@
 
 namespace search_typesense;
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Dispatches optional extension hooks to local_typesensepro when installed and enabled.

@@ -22,7 +22,6 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Execute search_typesense upgrade steps from the given old version.

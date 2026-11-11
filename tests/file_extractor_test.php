@@ -33,7 +33,6 @@ namespace search_typesense;
  * @covers     \search_typesense\file_extractor
  */
 final class file_extractor_test extends \advanced_testcase {
-
     /**
      * Test Word (.docx) XML extraction via ZipArchive.
      */
