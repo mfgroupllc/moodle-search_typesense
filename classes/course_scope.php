@@ -159,13 +159,50 @@ class course_scope {
     }
 
     /**
-     * Resolve a scope using current DB categories, including descendants of unsplit roots.
+     * Whether a category path represents a timeless template, resource, staff, or admissions container.
+     *
+     * @param string $pathorname Category name or slash-separated path of names.
+     * @return bool
+     */
+    public static function is_timeless_container(string $pathorname): bool {
+        return (bool)preg_match('/\b(template|templates|resource|resources|faculty|staff|admissions|preview)\b/i', $pathorname);
+    }
+
+    /**
+     * Resolve the reference timestamp for course date evaluation (adapts automatically to cloned stage sites).
+     *
+     * @param int|null $now Optional explicit timestamp override.
+     * @return int
+     */
+    public static function reference_timestamp(?int $now = null): int {
+        global $DB;
+        $now = $now ?? time();
+        $maxenrol = (int)$DB->get_field_sql(
+            "SELECT MAX(CASE WHEN timecreated >= timestart THEN timecreated ELSE timestart END)
+               FROM {user_enrolments}
+              WHERE status = 0 AND timestart < :maxts",
+            ['maxts' => $now + (180 * DAYSECS)]
+        );
+        if ($maxenrol > 0 && $maxenrol < $now - (30 * DAYSECS)) {
+            return $maxenrol;
+        }
+        $maxmod = (int)$DB->get_field_sql(
+            "SELECT MAX(timemodified)
+               FROM {course}
+              WHERE id <> :siteid",
+            ['siteid' => SITEID]
+        );
+        if ($maxmod > 0 && $maxmod < $now - (30 * DAYSECS)) {
+            return $maxmod;
+        }
+        return $now;
+    }
+
+    /**
+     * Resolve a scope using current DB categories, including descendants of unsplit roots,
+     * and enforcing course start/end dates for non-template cohort categories.
      *
      * Null means unrestricted; an empty array means no courses, never all courses.
-     * If a selected parent category also has specific descendants selected (for example,
-     * a program category with direct courses plus an "Active" child category alongside an
-     * unselected "Archived" child category), the parent matches its direct courses and only
-     * the selected descendants expand to their subtrees.
      *
      * @param string $scope Scope identifier ('current', 'historical', or 'all').
      * @return int[]|null
@@ -191,6 +228,24 @@ class course_scope {
             ));
         }
 
+        if ($scope === 'historical') {
+            $currentids = self::courseids('current');
+            if (empty($currentids)) {
+                return array_map('intval', array_keys(
+                    $DB->get_records_select('course', "id <> :siteid", ['siteid' => SITEID], '', 'id')
+                ));
+            }
+            [$notinsql, $nparams] = $DB->get_in_or_equal($currentids, SQL_PARAMS_NAMED, 'cid', false);
+            $nparams['siteid'] = SITEID;
+            return array_map('intval', array_keys($DB->get_records_select(
+                'course',
+                "id $notinsql AND id <> :siteid",
+                $nparams,
+                '',
+                'id'
+            )));
+        }
+
         $categories = $DB->get_records('course_categories', null, 'path', 'id,name,path');
         $hasselecteddescendant = [];
         foreach ($categories as $category) {
@@ -208,13 +263,26 @@ class course_scope {
         }
 
         $current = [];
+        $timelesscats = [];
         foreach ($categories as $category) {
             $id = (int)$category->id;
+            $chain = array_map('intval', explode('/', trim((string)$category->path, '/')));
+            $pathnames = [];
+            foreach ($chain as $stepid) {
+                if (isset($categories[$stepid])) {
+                    $pathnames[] = (string)$categories[$stepid]->name;
+                }
+            }
+            $fullpath = implode(' / ', $pathnames);
+            $istimeless = self::is_timeless_container($fullpath);
+
             if (isset($roots[$id])) {
                 $current[] = $id;
+                if ($istimeless) {
+                    $timelesscats[$id] = true;
+                }
                 continue;
             }
-            $chain = array_map('intval', explode('/', trim((string)$category->path, '/')));
             $matched = false;
             $count = count($chain);
             for ($i = 0; $i < $count - 1; $i++) {
@@ -237,35 +305,64 @@ class course_scope {
             }
             if ($matched) {
                 $current[] = $id;
+                if ($istimeless) {
+                    $timelesscats[$id] = true;
+                }
             }
         }
 
         if (!$current) {
-            if ($scope === 'current') {
-                return [];
-            }
-            return array_map('intval', array_keys(
-                $DB->get_records_select('course', "id <> :siteid", ['siteid' => SITEID], '', 'id')
-            ));
+            return [];
         }
-        [$insql, $params] = $DB->get_in_or_equal($current, SQL_PARAMS_NAMED, 'cat', $scope === 'current');
+
+        $refnow = self::reference_timestamp();
+        $graceend = $refnow - (14 * DAYSECS);
+        [$insql, $params] = $DB->get_in_or_equal($current, SQL_PARAMS_NAMED, 'cat', true);
         $params['siteid'] = SITEID;
-        return array_map('intval', array_keys($DB->get_records_select(
+        $courses = $DB->get_records_select(
             'course',
             "category $insql AND id <> :siteid",
             $params,
             '',
-            'id'
-        )));
+            'id,category,startdate,enddate'
+        );
+        $activeids = [];
+        foreach ($courses as $course) {
+            $catid = (int)$course->category;
+            $startdate = (int)$course->startdate;
+            $enddate = (int)$course->enddate;
+            $iscurrentdate = ($enddate > 0)
+                ? ($enddate >= $graceend)
+                : ($startdate === 0 || $startdate >= ($refnow - (120 * DAYSECS)));
+            if (isset($timelesscats[$catid]) || $iscurrentdate) {
+                $activeids[] = (int)$course->id;
+            }
+        }
+        return $activeids;
+    }
+
+    /**
+     * Resolve the active course IDs (plus SITEID) that high-volume search areas like mod_forum-post should index.
+     *
+     * Automatically applies inferred active categories if none have been saved yet.
+     *
+     * @return int[]
+     */
+    public static function active_indexing_courseids(): array {
+        if (!self::configured()) {
+            self::apply_inferred_categories(false);
+        }
+        $ids = self::courseids('current') ?? [];
+        $ids[] = (int)SITEID;
+        return array_values(array_unique(array_map('intval', $ids)));
     }
 
     /**
      * Infer active and in-development categories from course dates, modifications, enrolments, and access.
      *
-     * Includes categories with upcoming or recently created/modified courses even when they have
-     * zero enrolments so course designers can locate courses being built before launch.
-     * Applies leaf-safe rollup so clean parent containers (such as an "Active" or "Primary Templates"
-     * folder) are selected as a single root without pulling in sibling archive trees.
+     * Enforces cohort naming patterns (e.g. YYMM term folders) and course start/end dates so completed
+     * cohorts with expired end dates are excluded even if they had historical enrolments, and avoids
+     * rolling up parent "Active" containers over distinct cohort child folders.
      *
      * @param int|null $now Optional reference timestamp for deterministic testing.
      * @return \stdClass[] Keyed by selected category ID, with diagnostic counts and reason codes.
@@ -273,25 +370,8 @@ class course_scope {
     public static function infer_current_categories(?int $now = null): array {
         global $DB;
         $now = $now ?? time();
-        $refnow = $now;
-
-        $maxenrol = (int)$DB->get_field_sql(
-            "SELECT MAX( CASE WHEN timecreated >= timestart THEN timecreated ELSE timestart END )
-               FROM {user_enrolments}
-              WHERE status = 0"
-        );
-        $maxmod = (int)$DB->get_field_sql(
-            "SELECT MAX(timemodified)
-               FROM {course}
-              WHERE id <> :siteid",
-            ['siteid' => SITEID]
-        );
-        if ($maxenrol > 0 || $maxmod > 0) {
-            $latest = max($maxenrol, $maxmod);
-            if ($latest > 0 && $latest < $now - (30 * DAYSECS)) {
-                $refnow = $latest;
-            }
-        }
+        $refnow = self::reference_timestamp($now);
+        $graceend = $refnow - (14 * DAYSECS);
 
         $sql = "SELECT cc.id,
                        cc.name,
@@ -300,23 +380,27 @@ class course_scope {
                        cc.depth,
                        cc.visible,
                        COUNT(c.id) AS coursecount,
-                       SUM(CASE WHEN c.startdate >= :upstartmin AND c.startdate <= :upstartmax THEN 1 ELSE 0 END) AS upcomingcourses,
+                       SUM(CASE WHEN c.startdate > :refup AND c.startdate <= :upstartmax
+                                     AND (c.enddate = 0 OR c.enddate >= :graceup) THEN 1 ELSE 0 END) AS upcomingcourses,
                        SUM(CASE WHEN c.startdate > 0 AND c.startdate <= :now1 AND c.startdate >= :recentstart
                                      AND (c.enddate = 0 OR c.enddate >= :graceend1) THEN 1 ELSE 0 END) AS activedatedcourses,
-                       SUM(CASE WHEN c.timecreated >= :recentcreated
-                                     OR (c.timemodified >= :recentmod AND (c.enddate = 0 OR c.enddate >= :graceend2))
-                                THEN 1 ELSE 0 END) AS recentdevcourses
+                       SUM(CASE WHEN (c.timecreated >= :recentcreated OR c.timemodified >= :recentmod)
+                                     AND (c.enddate = 0 OR c.enddate >= :graceend2)
+                                THEN 1 ELSE 0 END) AS recentdevcourses,
+                       SUM(CASE WHEN c.enddate > 0 AND c.enddate < :graceend3 THEN 1 ELSE 0 END) AS expiredcourses
                   FROM {course_categories} cc
              LEFT JOIN {course} c ON c.category = cc.id AND c.id <> :siteid
               GROUP BY cc.id, cc.name, cc.parent, cc.path, cc.depth, cc.visible
               ORDER BY cc.path";
         $cats = $DB->get_records_sql($sql, [
-            'upstartmin' => $refnow - (14 * DAYSECS),
+            'refup' => $refnow,
             'upstartmax' => max($now, $refnow) + (365 * DAYSECS),
+            'graceup' => $graceend,
             'now1' => max($now, $refnow),
             'recentstart' => $refnow - (180 * DAYSECS),
-            'graceend1' => $refnow - (30 * DAYSECS),
-            'graceend2' => $refnow - (30 * DAYSECS),
+            'graceend1' => $graceend,
+            'graceend2' => $graceend,
+            'graceend3' => $graceend,
             'recentcreated' => $refnow - (90 * DAYSECS),
             'recentmod' => $refnow - (60 * DAYSECS),
             'siteid' => SITEID,
@@ -356,6 +440,8 @@ class course_scope {
         $directactive = [];
         $excluded = [];
         $reasons = [];
+        $cohortcodebycat = [];
+        $maxactivecohortbyparent = [];
 
         foreach ($cats as $id => $cat) {
             $id = (int)$id;
@@ -371,6 +457,12 @@ class course_scope {
             }
             $cat->fullpath = implode(' / ', $pathnames);
             $excluded[$id] = self::is_excluded_name($cat->fullpath);
+            $istimeless = self::is_timeless_container($cat->fullpath);
+
+            $trimmedname = trim((string)$cat->name);
+            if (preg_match('/^(2[0-9])(0[1-9]|1[0-2])$/', $trimmedname)) {
+                $cohortcodebycat[$id] = (int)$trimmedname;
+            }
 
             $enrol = $enrols[$id] ?? null;
             $access = $accesses[$id] ?? null;
@@ -378,12 +470,20 @@ class course_scope {
             $cat->upcomingcourses = (int)$cat->upcomingcourses;
             $cat->activedatedcourses = (int)$cat->activedatedcourses;
             $cat->recentdevcourses = (int)$cat->recentdevcourses;
+            $cat->expiredcourses = (int)($cat->expiredcourses ?? 0);
             $cat->activeenrols = (int)($enrol->activeenrols ?? 0);
             $cat->recentenrols = (int)($enrol->recentenrols ?? 0);
             $cat->recentaccesses = (int)($access->recentaccesses ?? 0);
 
+            // If a non-template category has expired dated courses and zero currently active or upcoming dated courses,
+            // it is a completed cohort whose enddate has already passed.
+            $alldatedexpired = !$istimeless
+                && $cat->expiredcourses > 0
+                && $cat->activedatedcourses === 0
+                && $cat->upcomingcourses === 0;
+
             $catreasons = [];
-            if (!$excluded[$id]) {
+            if (!$excluded[$id] && !$alldatedexpired) {
                 if ($cat->upcomingcourses > 0 || $cat->recentdevcourses > 0) {
                     $catreasons[] = 'upcomingdev';
                 }
@@ -399,6 +499,26 @@ class course_scope {
             }
             $reasons[$id] = $catreasons;
             $directactive[$id] = !empty($catreasons);
+            if ($directactive[$id] && isset($cohortcodebycat[$id])) {
+                $curmax = $maxactivecohortbyparent[$parentid] ?? 0;
+                if ($cohortcodebycat[$id] > $curmax) {
+                    $maxactivecohortbyparent[$parentid] = $cohortcodebycat[$id];
+                }
+            }
+        }
+
+        // Include empty pre-launch cohort folders (e.g. 2607 under Active) whose YYMM code is >= active sibling cohorts.
+        foreach ($cohortcodebycat as $id => $code) {
+            if ($excluded[$id] || $directactive[$id]) {
+                continue;
+            }
+            $cat = $cats[$id];
+            $parentid = (int)$cat->parent;
+            $maxsibling = $maxactivecohortbyparent[$parentid] ?? 0;
+            if ($cat->coursecount === 0 && $maxsibling > 0 && $code >= $maxsibling) {
+                $reasons[$id] = ['upcomingdev'];
+                $directactive[$id] = true;
+            }
         }
 
         $bydepth = array_keys($cats);
@@ -412,11 +532,15 @@ class course_scope {
         foreach ($bydepth as $id) {
             $id = (int)$id;
             $cat = $cats[$id];
-            $clean = !$excluded[$id] && ($cat->coursecount === 0 || $directactive[$id]);
+            $nonexpiredcount = max(0, $cat->coursecount - (int)$cat->expiredcourses);
+            $clean = !$excluded[$id]
+                && ((int)$cat->expiredcourses === 0 || self::is_timeless_container($cat->fullpath))
+                && ($cat->coursecount === 0 || $directactive[$id]);
             $hasactive = $directactive[$id];
-            $totalcourses = $cat->coursecount;
+            $totalcourses = self::is_timeless_container($cat->fullpath) ? $cat->coursecount : $nonexpiredcount;
             foreach ($children[$id] ?? [] as $cid) {
-                if (!$subtreeclean[$cid]) {
+                // Never roll up a parent folder if a child is a named cohort folder (e.g. 2604, 2605, 2607).
+                if (!$subtreeclean[$cid] || isset($cohortcodebycat[$cid])) {
                     $clean = false;
                 }
                 if ($subtreehasactive[$cid]) {
@@ -432,19 +556,24 @@ class course_scope {
         $results = [];
         foreach ($cats as $id => $cat) {
             $id = (int)$id;
+            $activecnt = self::is_timeless_container($cat->fullpath)
+                ? $cat->coursecount
+                : max(0, $cat->coursecount - (int)$cat->expiredcourses);
             if ($subtreeclean[$id] && $subtreehasactive[$id]) {
                 $pid = (int)$cat->parent;
                 if ($pid > 0 && !empty($subtreeclean[$pid]) && !empty($subtreehasactive[$pid])) {
                     continue;
                 }
                 $entry = clone $cat;
+                $entry->coursecount = $activecnt;
                 $entry->subtreecoursecount = $subtreecourses[$id];
                 $entry->rolledup = !empty($children[$id]);
                 $entry->reasons = $reasons[$id] ?: ['rolledup'];
                 $results[$id] = $entry;
             } else if ($directactive[$id]) {
                 $entry = clone $cat;
-                $entry->subtreecoursecount = $cat->coursecount;
+                $entry->coursecount = $activecnt;
+                $entry->subtreecoursecount = $activecnt;
                 $entry->rolledup = false;
                 $entry->reasons = $reasons[$id];
                 $results[$id] = $entry;

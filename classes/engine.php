@@ -583,14 +583,13 @@ class engine extends \core_search\engine {
         if (isset($this->preindexedstats[$areaid])) {
             $pre = $this->preindexedstats[$areaid];
             unset($this->preindexedstats[$areaid]);
-            $delta = parent::add_documents($iterator, $searcharea, $options);
             return [
-                (int)$pre['records'] + (int)($delta[0] ?? 0),
-                (int)$pre['docs'] + (int)($delta[1] ?? 0),
-                (int)$pre['ignored'] + (int)($delta[2] ?? 0),
-                max((int)($pre['lastindexeddoc'] ?? time()), (int)($delta[3] ?? 0)),
-                (bool)($pre['partial'] || !empty($delta[4])),
-                (int)$pre['batches'] + (int)($delta[5] ?? 0),
+                (int)$pre['records'],
+                (int)$pre['docs'],
+                (int)$pre['ignored'],
+                (int)($pre['lastindexeddoc'] ?? time()),
+                (bool)$pre['partial'],
+                (int)$pre['batches'],
             ];
         }
         return parent::add_documents($iterator, $searcharea, $options);
@@ -1243,8 +1242,8 @@ class engine extends \core_search\engine {
         $areaid = $searcharea->get_area_id();
         [$componentconfigname, $varname] = $searcharea->get_config_var_name();
         $moduleid = (int)$DB->get_field('modules', 'id', ['name' => 'forum']);
-        $minmax = $DB->get_record_sql('SELECT MIN(id) AS minid, MAX(id) AS maxid FROM {forum_posts}');
-        if ($moduleid <= 0 || !$minmax || empty($minmax->maxid)) {
+        $activecourses = course_scope::active_indexing_courseids();
+        if ($moduleid <= 0 || empty($activecourses)) {
             $now = time();
             set_config($varname . '_indexingend', $now, $componentconfigname);
             set_config($varname . '_lastindexrun', $now, $componentconfigname);
@@ -1262,10 +1261,36 @@ class engine extends \core_search\engine {
         }
 
         $savedcursor = (int)get_config($componentconfigname, $varname . '_pkcursor');
-        $cursor = ($savedcursor > 0) ? $savedcursor : (int)$minmax->minid;
-        $maxid = (int)$minmax->maxid;
-        $chunksize = 5000;
+        [$csql, $cparams] = $DB->get_in_or_equal($activecourses, SQL_PARAMS_NAMED, 'ac');
+        $cparams['minid'] = max(1, $savedcursor);
+        $targetpostids = $DB->get_fieldset_sql(
+            "SELECT fp.id
+               FROM {forum} f
+               JOIN {forum_discussions} fd ON fd.forum = f.id
+               JOIN {forum_posts} fp ON fp.discussion = fd.id
+              WHERE f.course {$csql}
+                AND fp.id >= :minid
+           ORDER BY fp.id ASC",
+            $cparams
+        );
+        if (!$targetpostids) {
+            $now = time();
+            set_config($varname . '_indexingend', $now, $componentconfigname);
+            set_config($varname . '_lastindexrun', $now, $componentconfigname);
+            unset_config($varname . '_partial', $componentconfigname);
+            unset_config($varname . '_pkcursor', $componentconfigname);
+            return [
+                'records' => 0,
+                'docs' => 0,
+                'ignored' => 0,
+                'batches' => 0,
+                'partial' => false,
+                'elapsed' => 0.0,
+                'lastindexeddoc' => $now,
+            ];
+        }
 
+        $chunksize = 2500;
         $numrecords = ($savedcursor > 0) ? (int)get_config($componentconfigname, $varname . '_recordsprocessed') : 0;
         $numdocs = ($savedcursor > 0) ? (int)get_config($componentconfigname, $varname . '_docsprocessed') : 0;
         $numdocsignored = ($savedcursor > 0) ? (int)get_config($componentconfigname, $varname . '_docsignored') : 0;
@@ -1277,29 +1302,29 @@ class engine extends \core_search\engine {
         $batchmax = $this->get_batch_max_documents();
         $fs = $fileindexing ? get_file_storage() : null;
 
-        $sql = "SELECT fp.id, fp.discussion, fp.created, fp.modified, fp.userid, fp.subject, fp.message, fp.messageformat,
-                       f.id AS forumid, f.course AS courseid, fd.groupid AS groupid, ctx.id AS _ts_ctxid
-                  FROM {forum_posts} fp
-                  JOIN {forum_discussions} fd ON fd.id = fp.discussion
-                  JOIN {forum} f ON f.id = fd.forum
-                  JOIN {course_modules} cm ON cm.instance = f.id AND cm.course = f.course AND cm.module = :modid
-                  JOIN {context} ctx ON ctx.instanceid = cm.id AND ctx.contextlevel = :ctxlevel
-                       AND ctx.path IS NOT NULL AND ctx.depth > 0
-                 WHERE fp.id >= :idstart AND fp.id < :idend
-              ORDER BY fp.id ASC";
+        $totaltarget = $numrecords + count($targetpostids);
+        $idchunks = array_chunk(array_map('intval', $targetpostids), $chunksize);
+        unset($targetpostids);
 
-        while ($cursor <= $maxid) {
+        foreach ($idchunks as $idchunk) {
             if ($stopat > 0 && microtime(true) >= $stopat) {
                 $partial = true;
                 break;
             }
-            $idend = $cursor + $chunksize;
-            $rs = $DB->get_recordset_sql($sql, [
-                'modid' => $moduleid,
-                'ctxlevel' => CONTEXT_MODULE,
-                'idstart' => $cursor,
-                'idend' => $idend,
-            ]);
+            [$fpsql, $fpparams] = $DB->get_in_or_equal($idchunk, SQL_PARAMS_NAMED, 'fpid');
+            $fpparams['modid'] = $moduleid;
+            $fpparams['ctxlevel'] = CONTEXT_MODULE;
+            $sql = "SELECT fp.id, fp.discussion, fp.created, fp.modified, fp.userid, fp.subject, fp.message, fp.messageformat,
+                           f.id AS forumid, f.course AS courseid, fd.groupid AS groupid, ctx.id AS _ts_ctxid
+                      FROM {forum_posts} fp
+                      JOIN {forum_discussions} fd ON fd.id = fp.discussion
+                      JOIN {forum} f ON f.id = fd.forum
+                      JOIN {course_modules} cm ON cm.instance = f.id AND cm.course = f.course AND cm.module = :modid
+                      JOIN {context} ctx ON ctx.instanceid = cm.id AND ctx.contextlevel = :ctxlevel
+                           AND ctx.path IS NOT NULL AND ctx.depth > 0
+                     WHERE fp.id {$fpsql}
+                  ORDER BY fp.id ASC";
+            $rs = $DB->get_recordset_sql($sql, $fpparams);
 
             $chunkdocs = [];
             $postids = [];
@@ -1364,7 +1389,7 @@ class engine extends \core_search\engine {
             }
             unset($chunkdocs, $postids);
 
-            $cursor = $idend;
+            $cursor = ((int)end($idchunk)) + 1;
             $now = time();
             set_config($varname . '_pkcursor', $cursor, $componentconfigname);
             set_config($varname . '_docsprocessed', $numdocs, $componentconfigname);
@@ -1381,8 +1406,8 @@ class engine extends \core_search\engine {
                 'records' => $numrecords,
                 'batches' => $batches,
                 'rate' => (int)round($numdocs / $elapsed),
-                'cursor' => $cursor,
-                'maxid' => $maxid,
+                'cursor' => $numrecords,
+                'maxid' => max(1, $totaltarget),
                 'updated' => $now,
             ]), 'search_typesense');
         }
@@ -1575,6 +1600,16 @@ class engine extends \core_search\engine {
      * @return bool False if the document failed, true on success
      */
     public function add_document($document, $fileindexing = false) {
+        if ($document->is_set('areaid') && (string)$document->get('areaid') === 'mod_forum-post') {
+            static $activecoursemap = null;
+            if ($activecoursemap === null) {
+                $activecoursemap = array_fill_keys(course_scope::active_indexing_courseids(), true);
+            }
+            $courseid = $document->is_set('courseid') ? (int)$document->get('courseid') : 0;
+            if ($activecoursemap && !isset($activecoursemap[$courseid])) {
+                return false;
+            }
+        }
         $collection = $this->ensure_collection();
         try {
             $mapped = $this->map_document($document, null, (bool)$fileindexing);
