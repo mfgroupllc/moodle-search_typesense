@@ -47,6 +47,87 @@ class access_manager extends \core_search\manager {
     private $contextcache = [];
 
     /**
+     * Evaluate whether a course record is searchable under `core_course-course` for the current viewer.
+     *
+     * When `search_typesense/restrictunenrolledcourses` is enabled, viewers without staff/faculty
+     * identity or course-management capabilities only see courses they are enrolled in, can already
+     * access (such as open guest/auto-enrol courses), or can actively self-enrol in.
+     *
+     * @param \stdClass $course Course record.
+     * @return bool
+     */
+    public function can_search_course_record(\stdClass $course): bool {
+        if (!\core_course_category::can_view_course_info($course)) {
+            return false;
+        }
+        $plugin = ($this->engine && method_exists($this->engine, 'get_plugin_name'))
+            ? $this->engine->get_plugin_name()
+            : 'search_typesense';
+        $restricted = get_config($plugin, 'restrictunenrolledcourses');
+        if (($restricted === false || $restricted === null) && $plugin !== 'search_typesense') {
+            $restricted = get_config('search_typesense', 'restrictunenrolledcourses');
+        }
+        if (empty($restricted)) {
+            return true;
+        }
+        if (is_siteadmin()) {
+            return true;
+        }
+        $sysctx = \context_system::instance();
+        if (
+            has_capability('moodle/course:view', $sysctx) ||
+                has_capability('moodle/course:update', $sysctx) ||
+                has_capability('moodle/category:manage', $sysctx) ||
+                user_profile_fields::can_current_user_query_identity($plugin)
+        ) {
+            return true;
+        }
+        $coursecontext = \context_course::instance($course->id, IGNORE_MISSING);
+        if (
+            $coursecontext && (
+                has_capability('moodle/course:view', $coursecontext) ||
+                has_capability('moodle/course:update', $coursecontext)
+            )
+        ) {
+            return true;
+        }
+        if (can_access_course($course, null, '', true)) {
+            return true;
+        }
+        return self::is_course_self_enrollable((int)$course->id);
+    }
+
+    /**
+     * Check whether the given course has an active enrollment instance that permits self-enrollment for the current user.
+     *
+     * @param int $courseid Course ID.
+     * @return bool
+     */
+    private static function is_course_self_enrollable(int $courseid): bool {
+        if ($courseid <= 0 || isguestuser() || !isloggedin()) {
+            return false;
+        }
+        $enrolplugins = enrol_get_plugins(true);
+        if (!$enrolplugins) {
+            return false;
+        }
+        $instances = enrol_get_instances($courseid, true);
+        foreach ($instances as $instance) {
+            $plugin = $enrolplugins[$instance->enrol] ?? null;
+            if (!$plugin) {
+                continue;
+            }
+            if (method_exists($plugin, 'can_self_enrol') && $plugin->can_self_enrol($instance, false) === true) {
+                return true;
+            }
+            if (method_exists($plugin, 'show_enrolme_link') && $plugin->show_enrolme_link($instance)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Normalize a set of positive numeric identifiers.
      *
      * @param array $ids IDs to normalize.
@@ -165,7 +246,7 @@ class access_manager extends \core_search\manager {
                     if (!$coursecontext || ($contextids && !in_array((int)$coursecontext->id, $contextids, true))) {
                         continue;
                     }
-                    if (\core_course_category::can_view_course_info($course)) {
+                    if ($this->can_search_course_record($course)) {
                         $cid = (int)$coursecontext->id;
                         $cached['info']->usercontexts['core_course-course'][$cid] = $cid;
                     }

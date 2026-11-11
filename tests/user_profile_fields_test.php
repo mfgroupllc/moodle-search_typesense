@@ -157,4 +157,66 @@ final class user_profile_fields_test extends \advanced_testcase {
             $managerkeys
         );
     }
+
+    /**
+     * Verify restrictunenrolledcourses hides non-enrollable courses from students while preserving
+     * enrolled courses, self-enrollable courses, and full catalog visibility for staff/faculty.
+     *
+     * @return void
+     */
+    public function test_restrict_unenrolled_courses_for_students(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+
+        $enrolledcourse = $generator->create_course(['fullname' => 'Enrolled Culinary Course']);
+        $historicalcourse = $generator->create_course(['fullname' => 'Historical Locked Course 2201']);
+        $selfenrolcourse = $generator->create_course(['fullname' => 'Open Orientation Self Enrol']);
+
+        // Enable self-enrolment on $selfenrolcourse.
+        $selfplugin = enrol_get_plugin('self');
+        $studentroleid = $DB->get_field('role', 'id', ['shortname' => 'student'], MUST_EXIST);
+        $selfinstance = $DB->get_record(
+            'enrol',
+            ['courseid' => $selfenrolcourse->id, 'enrol' => 'self'],
+            '*',
+            IGNORE_MISSING
+        );
+        if ($selfinstance) {
+            $selfplugin->update_status($selfinstance, ENROL_INSTANCE_ENABLED);
+            $DB->set_field('enrol', 'customint6', 1, ['id' => $selfinstance->id]);
+        } else {
+            $selfplugin->add_instance($selfenrolcourse, [
+                'status' => ENROL_INSTANCE_ENABLED,
+                'roleid' => $studentroleid,
+                'customint6' => 1,
+            ]);
+        }
+
+        $student = $generator->create_user();
+        $teacher = $generator->create_user();
+        $generator->enrol_user($student->id, $enrolledcourse->id, 'student');
+        $generator->enrol_user($teacher->id, $enrolledcourse->id, 'editingteacher');
+
+        $engine = new candidate_engine();
+        $am = new access_manager($engine);
+
+        // When setting is enabled: student sees enrolled and self-enrollable courses, NOT historical locked course.
+        set_config('restrictunenrolledcourses', 1, 'search_typesense');
+        $this->setUser($student);
+        $this->assertTrue($am->can_search_course_record($enrolledcourse));
+        $this->assertTrue($am->can_search_course_record($selfenrolcourse));
+        $this->assertFalse($am->can_search_course_record($historicalcourse));
+
+        // Teacher holds moodle/site:viewuseridentity and sees all courses including historical.
+        $this->setUser($teacher);
+        $this->assertTrue($am->can_search_course_record($enrolledcourse));
+        $this->assertTrue($am->can_search_course_record($selfenrolcourse));
+        $this->assertTrue($am->can_search_course_record($historicalcourse));
+
+        // When setting is disabled: student can see course info for historical courses again.
+        set_config('restrictunenrolledcourses', 0, 'search_typesense');
+        $this->setUser($student);
+        $this->assertTrue($am->can_search_course_record($historicalcourse));
+    }
 }

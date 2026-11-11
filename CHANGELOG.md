@@ -4,6 +4,15 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.10] - 2026-11-11
+
+### Added & Improved
+- **Hide Non-Enrollable Courses from Student Search Results (`search_typesense/restrictunenrolledcourses`):**
+  - Added a new administration setting under **Content, Users & Integrations $\rightarrow$ Hide non-enrollable courses from student search results** (enabled by default).
+  - When enabled, students only see course results (`core_course-course`) for courses they are enrolled in, can already access (such as open guest or auto-enroll courses), or can actively self-enroll in. Historical and cohort-locked courses they cannot join are hidden from students while remaining searchable for staff, faculty, and managers.
+
+---
+
 ## [1.1.9] - 2026-11-10
 
 ### Added & Improved

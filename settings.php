@@ -183,6 +183,13 @@ if (isset($ADMIN) && $ADMIN->locate('searchplugins')) {
                 1
             ));
 
+            $contentsettings->add(new admin_setting_configcheckbox(
+                'search_typesense/restrictunenrolledcourses',
+                new lang_string('restrictunenrolledcourses', 'search_typesense'),
+                new lang_string('restrictunenrolledcourses_desc', 'search_typesense'),
+                1
+            ));
+
             $contentsettings->add(new admin_setting_configmultiselect(
                 'search_typesense/userprofilefields',
                 new lang_string('userprofilefields', 'search_typesense'),

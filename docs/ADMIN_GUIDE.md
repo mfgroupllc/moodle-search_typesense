@@ -49,6 +49,7 @@ A shared tab bar at the top of every page lets administrators switch between:
 | Setting | Default | Description |
 | :--- | :--- | :--- |
 | **Restrict user profile search to staff** | Enabled | When enabled, only staff and instructors who hold Moodle user-identity permissions can search user profiles or see the **Users** filter tab. Students cannot search user profiles. |
+| **Hide non-enrollable courses from student search results** | Enabled | When enabled, students only see course results (`core_course-course`) for courses they are enrolled in, can already access (such as open guest or auto-enroll courses), or can actively self-enroll in. Historical and cohort-locked courses they cannot join are hidden from students while remaining searchable for staff, faculty, and managers. |
 | **Searchable user profile fields** | `ID number, Email address, Department, Institution` | Selects which standard (`ID number`, `Email address`, `Username`, `Phone`, `Mobile phone`, `Department`, `Institution`, `City/town`, `Country`) and custom user profile fields are indexed and shown as badges on user search results for authorized staff. |
 
 > **Privacy Note:** Profile fields are only searchable and visible to staff whose Moodle role grants permission to view user identity fields (`moodle/site:viewuseridentity` or `moodle/user:viewalldetails`).
