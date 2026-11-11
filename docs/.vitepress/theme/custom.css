@@ -10,6 +10,8 @@
   --vp-button-brand-hover-text: #0A0A0A;
   --vp-home-hero-name-color: transparent;
   --vp-home-hero-name-background: linear-gradient(120deg, #F98012 30%, #FB9A3C);
+  --vp-home-hero-image-background-image: linear-gradient(-45deg, rgba(249, 128, 18, 0.28) 50%, rgba(251, 154, 60, 0.22) 50%);
+  --vp-home-hero-image-filter: blur(56px);
 }
 
 .dark {
@@ -17,4 +19,63 @@
   --vp-c-brand-2: #F98012;
   --vp-c-brand-3: #F98012;
   --vp-c-brand-soft: rgba(251, 154, 60, 0.16);
+}
+
+/* Match chrismurad.com circuit-board background on the main documentation home page */
+.VPHome {
+  position: relative;
+}
+
+.VPHome::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  opacity: 0.08;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 800' preserveAspectRatio='xMidYMid slice'%3E%3Cg stroke='%23F98012' fill='none'%3E%3Cline x1='0' y1='100' x2='1200' y2='100' stroke-width='1'/%3E%3Cline x1='0' y1='250' x2='1200' y2='250' stroke-width='0.6'/%3E%3Cline x1='0' y1='400' x2='1200' y2='400' stroke-width='1'/%3E%3Cline x1='0' y1='550' x2='1200' y2='550' stroke-width='0.6'/%3E%3Cline x1='0' y1='700' x2='1200' y2='700' stroke-width='1'/%3E%3Cline x1='150' y1='0' x2='150' y2='800' stroke-width='0.6'/%3E%3Cline x1='350' y1='0' x2='350' y2='800' stroke-width='1'/%3E%3Cline x1='550' y1='0' x2='550' y2='800' stroke-width='0.6'/%3E%3Cline x1='750' y1='0' x2='750' y2='800' stroke-width='1'/%3E%3Cline x1='950' y1='0' x2='950' y2='800' stroke-width='0.6'/%3E%3Cline x1='1100' y1='0' x2='1100' y2='800' stroke-width='1'/%3E%3Cline x1='150' y1='100' x2='350' y2='250' stroke-width='0.6'/%3E%3Cline x1='750' y1='100' x2='550' y2='250' stroke-width='0.6'/%3E%3Cline x1='350' y1='400' x2='550' y2='550' stroke-width='0.6'/%3E%3Cline x1='950' y1='250' x2='1100' y2='400' stroke-width='0.6'/%3E%3C/g%3E%3Cg fill='%23F98012'%3E%3Ccircle cx='150' cy='100' r='5'/%3E%3Ccircle cx='350' cy='100' r='5'/%3E%3Ccircle cx='550' cy='100' r='4'/%3E%3Ccircle cx='750' cy='100' r='5'/%3E%3Ccircle cx='950' cy='100' r='4'/%3E%3Ccircle cx='1100' cy='100' r='5'/%3E%3Ccircle cx='150' cy='250' r='4'/%3E%3Ccircle cx='350' cy='250' r='5'/%3E%3Ccircle cx='550' cy='250' r='5'/%3E%3Ccircle cx='750' cy='250' r='4'/%3E%3Ccircle cx='950' cy='250' r='5'/%3E%3Ccircle cx='1100' cy='250' r='4'/%3E%3Ccircle cx='150' cy='400' r='5'/%3E%3Ccircle cx='350' cy='400' r='4'/%3E%3Ccircle cx='550' cy='400' r='5'/%3E%3Ccircle cx='750' cy='400' r='5'/%3E%3Ccircle cx='950' cy='400' r='4'/%3E%3Ccircle cx='1100' cy='400' r='5'/%3E%3Ccircle cx='150' cy='550' r='4'/%3E%3Ccircle cx='350' cy='550' r='5'/%3E%3Ccircle cx='550' cy='550' r='4'/%3E%3Ccircle cx='750' cy='550' r='5'/%3E%3Ccircle cx='950' cy='550' r='5'/%3E%3Ccircle cx='1100' cy='550' r='4'/%3E%3Ccircle cx='150' cy='700' r='5'/%3E%3Ccircle cx='350' cy='700' r='4'/%3E%3Ccircle cx='550' cy='700' r='5'/%3E%3Ccircle cx='750' cy='700' r='4'/%3E%3Ccircle cx='950' cy='700' r='5'/%3E%3Ccircle cx='1100' cy='700' r='5'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: center;
+}
+
+.VPHome > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Match chrismurad.com top navbar grid pattern on the home page */
+html:not(.dark) .VPNavBar.home-top,
+html:not(.dark) .VPNavBar:not(.has-sidebar) {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(249, 128, 18, 0.35) 1px, transparent 0),
+    repeating-linear-gradient(90deg, rgba(249, 128, 18, 0.1) 0, rgba(249, 128, 18, 0.1) 1px, transparent 1px, transparent 200px),
+    repeating-linear-gradient(0deg, rgba(249, 128, 18, 0.1) 0, rgba(249, 128, 18, 0.1) 1px, transparent 1px, transparent 200px) !important;
+  background-size: 200px 200px, 200px 200px, 200px 200px !important;
+  backdrop-filter: blur(0.75rem);
+  border-bottom: 1px solid rgba(249, 128, 18, 0.12) !important;
+}
+
+/* Style the hero icon on the right side of the home hero */
+.VPHero .image-src {
+  max-width: 220px !important;
+  max-height: 220px !important;
+  border-radius: 1.5rem;
+  box-shadow: 0 18px 42px rgba(15, 27, 45, 0.14), 0 0 0 2px rgba(249, 128, 18, 0.25);
+  background: #ffffff;
+  padding: 0.5rem;
+}
+
+/* Feature cards styled to match chrismurad.com service cards */
+html:not(.dark) .VPFeature {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(249, 128, 18, 0.18) !important;
+  box-shadow: 0 4px 16px rgba(15, 27, 45, 0.04);
+}
+
+html:not(.dark) .VPFeature:hover {
+  border-color: #F98012 !important;
 }
