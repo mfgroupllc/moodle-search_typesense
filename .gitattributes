@@ -3,3 +3,4 @@
 /.github export-ignore
 /aws export-ignore
 /dist export-ignore
+/docs export-ignore
