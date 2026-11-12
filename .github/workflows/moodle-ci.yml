@@ -96,18 +96,11 @@ jobs:
       - name: Export built AMD bundles
         if: ${{ matrix.php == '8.2' }}
         run: |
-          mkdir -p moodle/local/typesensepro/amd/src
-          cp plugin/amd/src/instant.js moodle/local/typesensepro/amd/src/instant.js
-          echo "<?php \$plugin->component = 'local_typesensepro'; \$plugin->version = 2026111201;" > moodle/local/typesensepro/version.php
-          (cd moodle && npx grunt amd --root=local/typesensepro)
+          (cd moodle && npx grunt amd --root=search/engine/typesense)
           echo "=== REINDEX_STATUS_MIN_JS ==="
           base64 -w 0 moodle/search/engine/typesense/amd/build/reindex_status.min.js && echo ""
           echo "=== REINDEX_STATUS_MAP ==="
           base64 -w 0 moodle/search/engine/typesense/amd/build/reindex_status.min.js.map && echo ""
-          echo "=== INSTANT_MIN_JS ==="
-          base64 -w 0 moodle/local/typesensepro/amd/build/instant.min.js && echo ""
-          echo "=== INSTANT_MAP ==="
-          base64 -w 0 moodle/local/typesensepro/amd/build/instant.min.js.map && echo ""
           echo "=== END_AMD ==="
 
       - name: PHPUnit tests
