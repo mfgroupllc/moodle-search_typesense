@@ -4,6 +4,16 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.12] - 2026-11-12
+
+### Changed
+- **External Service, AMD Module & Documentation Packaging (`\search_typesense\external\get_reindex_status`, `amd/src/reindex_status.js`, `styles.css`):**
+  - Replaced inline `js_init_code` and `action=ajaxstatus` polling on `reindex_areas.php` with a Moodle External Service (`search_typesense_get_reindex_status` in `db/services.php`) and AMD module (`search_typesense/reindex_status`).
+  - Moved inline progress bar styling to `styles.css`.
+  - Included the `docs/` directory in release `.zip` archives so all relative links in `README.md` resolve offline.
+
+---
+
 ## [1.1.11] - 2026-11-11
 
 ### Changed

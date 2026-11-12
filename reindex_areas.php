@@ -72,97 +72,6 @@ if (empty($queuedtasks) && $activearea !== '') {
     }
 }
 
-// Handle lightweight AJAX status polling (updates progress bar and table cells without full-page reload).
-if ($action === 'ajaxstatus') {
-    \core\session\manager::write_close();
-    $areacounts = $tsengine->get_area_document_counts();
-    $searchareas = \core_search\manager::get_search_areas_list(true);
-    $searchmanager = null;
-    try {
-        $searchmanager = \core_search\manager::instance();
-    } catch (\Throwable $e) {
-        debugging('Search manager init skipped: ' . $e->getMessage(), DEBUG_DEVELOPER);
-    }
-    $areasconfig = $searchmanager ? $searchmanager->get_areas_config($searchareas) : [];
-
-    $progresstext = '';
-    $pct = null;
-    if (is_array($activeprogress) && !empty($activeprogress['areaid'])) {
-        $pinfo = (object)[
-            'areaid' => s((string)$activeprogress['areaid']),
-            'docs' => number_format((int)($activeprogress['docs'] ?? 0)),
-            'records' => number_format((int)($activeprogress['records'] ?? 0)),
-            'batches' => number_format((int)($activeprogress['batches'] ?? 0)),
-            'rate' => number_format((int)($activeprogress['rate'] ?? 0)),
-        ];
-        $progresstext = get_string('reindexareas_bg_active_progress', 'search_typesense', $pinfo);
-        $cursor = (int)($activeprogress['cursor'] ?? 0);
-        $maxid = (int)($activeprogress['maxid'] ?? 0);
-        if ($maxid > 0 && $cursor > 0) {
-            $pct = min(100, max(2, (int)round(($cursor / $maxid) * 100)));
-        }
-    }
-
-    $rows = [];
-    foreach ($searchareas as $id => $area) {
-        $tsdoccount = $areacounts[$id] ?? 0;
-        $countbadgeclass = $tsdoccount > 0
-            ? 'badge badge-success bg-success text-white'
-            : 'badge badge-secondary bg-secondary text-white';
-        $counthtml = html_writer::tag('span', number_format($tsdoccount), ['class' => $countbadgeclass]);
-
-        $cfg = $areasconfig[$id] ?? null;
-        $newestdoc = '-';
-        if ($cfg && !empty($cfg->lastindexrun)) {
-            $newestdoc = is_numeric($cfg->lastindexrun) ? userdate((int)$cfg->lastindexrun) : (string)$cfg->lastindexrun;
-        }
-
-        if (isset($queuedbyarea[$id]) || $activearea === $id) {
-            $isrunning = ($activearea === $id) || !empty($queuedbyarea[$id]['timestarted']);
-            $statusstr = $isrunning
-                ? get_string('reindexareas_status_running', 'search_typesense')
-                : get_string('reindexareas_status_bgqueued', 'search_typesense');
-            $lastrun = html_writer::tag('span', $statusstr, ['class' => 'badge badge-primary bg-primary text-white']);
-            if ($cfg && !empty($cfg->docsprocessed)) {
-                $doccounttxt = '(' . number_format((int)$cfg->docsprocessed) . ' docs)';
-                $lastrun .= ' ' . html_writer::tag('span', $doccounttxt, ['class' => 'small']);
-            }
-        } else if ($cfg && !empty($cfg->indexingstart)) {
-            $duration = max(0, (int)$cfg->indexingend - (int)$cfg->indexingstart);
-            $lastrun = $duration . 's (' . number_format((int)$cfg->docsprocessed) . ' docs)';
-            if (!empty($cfg->partial)) {
-                $lastrun .= ' ' . html_writer::tag(
-                    'span',
-                    get_string('searchpartial', 'admin'),
-                    ['class' => 'badge badge-warning bg-warning text-dark']
-                );
-            }
-        } else {
-            $lastrun = html_writer::tag(
-                'span',
-                get_string('reindexareas_status_pending', 'search_typesense'),
-                ['class' => 'badge badge-info bg-info text-white']
-            );
-        }
-
-        $rows[$id] = [
-            'counthtml' => $counthtml,
-            'newestdoc' => s($newestdoc),
-            'lastrunhtml' => $lastrun,
-        ];
-    }
-
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode([
-        'active' => (!empty($queuedtasks) || $activearea !== ''),
-        'title' => get_string('reindexareas_bg_active_title', 'search_typesense', count($queuedtasks)),
-        'progresstext' => $progresstext,
-        'pct' => $pct,
-        'rows' => $rows,
-    ]);
-    exit;
-}
-
 // Handle POST actions that redirect immediately.
 $redirectactions = ['runbg', 'runbgall', 'cancelbg', 'queuearea', 'queueall', 'fixcontexts'];
 if (in_array($action, $redirectactions, true) && data_submitted()) {
@@ -346,8 +255,8 @@ if (is_array($activeprogress) && !empty($activeprogress['areaid'])) {
 }
 echo html_writer::div($initprogresstxt, 'small mt-1', ['id' => 'ts-reindex-bg-progress']);
 
-$barwrapclass = 'progress mt-2 ' . ($initpct > 0 ? '' : 'd-none');
-echo html_writer::start_div($barwrapclass, ['id' => 'ts-reindex-bg-bar-wrap', 'style' => 'height: 10px; max-width: 520px;']);
+$barwrapclass = 'progress mt-2 search-typesense-reindex-bar-wrap ' . ($initpct > 0 ? '' : 'd-none');
+echo html_writer::start_div($barwrapclass, ['id' => 'ts-reindex-bg-bar-wrap']);
 echo html_writer::div(
     '',
     'progress-bar progress-bar-striped progress-bar-animated bg-primary',
@@ -370,64 +279,8 @@ $cancelform .= html_writer::tag(
 echo html_writer::tag('form', $cancelform, ['method' => 'post', 'action' => $pageurl->out(false), 'class' => 'd-inline']);
 echo html_writer::end_div();
 
-// Background AJAX poller: updates the progress bar and table cells in-place without reloading the page.
-$ajaxurl = (new moodle_url('/search/engine/typesense/reindex_areas.php', ['action' => 'ajaxstatus']))->out(false);
-$ajaxjs = "
-(function() {
-    var ajaxUrl = " . json_encode($ajaxurl) . ";
-    var pollStatus = function() {
-        fetch(ajaxUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
-            .then(function(r) { return r.ok ? r.json() : null; })
-            .then(function(data) {
-                if (!data) { return; }
-                var banner = document.getElementById('ts-reindex-bg-banner');
-                var titleEl = document.getElementById('ts-reindex-bg-title');
-                var progEl = document.getElementById('ts-reindex-bg-progress');
-                var barWrap = document.getElementById('ts-reindex-bg-bar-wrap');
-                var barEl = document.getElementById('ts-reindex-bg-bar');
-                if (banner) {
-                    if (data.active) {
-                        banner.classList.remove('d-none');
-                        banner.classList.add('d-flex');
-                    } else {
-                        banner.classList.remove('d-flex');
-                        banner.classList.add('d-none');
-                    }
-                }
-                if (titleEl && data.title) { titleEl.textContent = data.title; }
-                if (progEl) { progEl.innerHTML = data.progresstext || ''; }
-                if (barWrap && barEl) {
-                    if (data.active && data.pct !== null && data.pct > 0) {
-                        barWrap.classList.remove('d-none');
-                        barEl.style.width = data.pct + '%';
-                    } else if (data.active && data.progresstext) {
-                        barWrap.classList.remove('d-none');
-                        barEl.style.width = '100%';
-                    } else {
-                        barWrap.classList.add('d-none');
-                    }
-                }
-                if (data.rows) {
-                    Object.keys(data.rows).forEach(function(areaid) {
-                        var row = data.rows[areaid];
-                        var cEl = document.querySelector('[data-ts-count=\"' + areaid + '\"]');
-                        var nEl = document.querySelector('[data-ts-newest=\"' + areaid + '\"]');
-                        var lEl = document.querySelector('[data-ts-lastrun=\"' + areaid + '\"]');
-                        if (cEl && row.counthtml !== undefined) { cEl.innerHTML = row.counthtml; }
-                        if (nEl && row.newestdoc !== undefined) { nEl.textContent = row.newestdoc; }
-                        if (lEl && row.lastrunhtml !== undefined) { lEl.innerHTML = row.lastrunhtml; }
-                    });
-                }
-                setTimeout(pollStatus, data.active ? 2500 : 8000);
-            })
-            .catch(function() {
-                setTimeout(pollStatus, 6000);
-            });
-    };
-    setTimeout(pollStatus, " . ($isbgactive ? '2500' : '6000') . ");
-})();
-";
-$PAGE->requires->js_init_code($ajaxjs);
+// Background status poller via AMD module + core/ajax external service.
+$PAGE->requires->js_call_amd('search_typesense/reindex_status', 'init', [$isbgactive]);
 
 // Check for broken/unbuilt context rows that cause Moodle core's get_in_or_equal() error.
 $missingcontexts = (int)$DB->count_records_select('context', 'path IS NULL OR depth = 0');
