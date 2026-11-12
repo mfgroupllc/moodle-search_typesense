@@ -1149,24 +1149,30 @@ class engine extends \core_search\engine {
                 if ($directattach && $chunkctxids) {
                     [$ctxsql, $ctxparams] = $DB->get_in_or_equal(array_values($chunkctxids), SQL_PARAMS_NAMED, 'ctx');
                     [$fasql, $faparams] = $DB->get_in_or_equal(array_values($fileareas), SQL_PARAMS_NAMED, 'fa');
-                    $hasfiles = array_flip($DB->get_fieldset_sql(
-                        "SELECT DISTINCT contextid
+                    $filerecords = $DB->get_recordset_sql(
+                        "SELECT *
                            FROM {files}
                           WHERE contextid {$ctxsql}
                             AND component = :comp
                             AND filearea {$fasql}
-                            AND filename <> '.'",
+                            AND filename <> '.'
+                       ORDER BY contextid ASC, itemid ASC, sortorder DESC, id ASC",
                         array_merge($ctxparams, $faparams, ['comp' => $componentname])
-                    ));
+                    );
+                    $filesbyctx = [];
+                    foreach ($filerecords as $frec) {
+                        $filesbyctx[(int)$frec->contextid][] = $fs->get_file_instance($frec);
+                    }
+                    $filerecords->close();
                     foreach ($chunkdocs as $doc) {
                         $dctxid = (int)$doc->get('contextid');
-                        if (isset($hasfiles[$dctxid])) {
-                            $files = $fs->get_area_files($dctxid, $componentname, $fileareas, false, '', false);
-                            foreach ($files as $file) {
+                        if (!empty($filesbyctx[$dctxid])) {
+                            foreach ($filesbyctx[$dctxid] as $file) {
                                 $doc->add_stored_file($file);
                             }
                         }
                     }
+                    unset($filesbyctx);
                 } else {
                     foreach ($chunkdocs as $doc) {
                         $searcharea->attach_files($doc);
@@ -1182,6 +1188,17 @@ class engine extends \core_search\engine {
                 if ($progress !== null) {
                     $progress->progress();
                 }
+                $elapsed = max(0.01, round(microtime(true) - $started, 2));
+                set_config('active_reindex_progress', json_encode([
+                    'areaid' => $areaid,
+                    'docs' => $numdocs,
+                    'records' => $numrecords,
+                    'batches' => $batches,
+                    'rate' => (int)round($numdocs / $elapsed),
+                    'cursor' => $cursor,
+                    'maxid' => $maxid,
+                    'updated' => time(),
+                ]), 'search_typesense');
             }
             unset($chunkdocs, $chunkctxids);
 
@@ -1359,28 +1376,23 @@ class engine extends \core_search\engine {
 
             if ($fileindexing && $postids) {
                 [$pidsql, $pidparams] = $DB->get_in_or_equal($postids, SQL_PARAMS_NAMED, 'pid');
-                $postswithfiles = $DB->get_fieldset_sql(
-                    "SELECT DISTINCT itemid
+                $filerecords = $DB->get_recordset_sql(
+                    "SELECT *
                        FROM {files}
                       WHERE component = 'mod_forum'
                         AND filearea IN ('attachment', 'post')
                         AND itemid {$pidsql}
-                        AND filename <> '.'",
+                        AND filename <> '.'
+                   ORDER BY itemid ASC, sortorder DESC, id ASC",
                     $pidparams
                 );
-                foreach ($postswithfiles as $pid) {
-                    $pid = (int)$pid;
-                    if (!isset($chunkdocs[$pid])) {
-                        continue;
-                    }
-                    $dctxid = (int)$chunkdocs[$pid]->get('contextid');
-                    foreach (['attachment', 'post'] as $farea) {
-                        $files = $fs->get_area_files($dctxid, 'mod_forum', $farea, $pid, '', false);
-                        foreach ($files as $file) {
-                            $chunkdocs[$pid]->add_stored_file($file);
-                        }
+                foreach ($filerecords as $frec) {
+                    $pid = (int)$frec->itemid;
+                    if (isset($chunkdocs[$pid])) {
+                        $chunkdocs[$pid]->add_stored_file($fs->get_file_instance($frec));
                     }
                 }
+                $filerecords->close();
             }
 
             foreach (array_chunk(array_values($chunkdocs), $batchmax) as $batch) {

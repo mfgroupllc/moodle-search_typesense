@@ -47,6 +47,15 @@ class file_extractor {
     /** @var int Maximum total extracted file characters appended to a single search document. */
     public const MAX_CHARS_PER_DOCUMENT = 60000;
 
+    /** @var array<string, string> In-memory LRU cache of extracted text keyed by file SHA-1 contenthash. */
+    protected static array $contenthashcache = [];
+
+    /** @var int Maximum number of unique contenthash entries retained in memory during bulk indexing. */
+    protected const MAX_CACHE_ENTRIES = 2500;
+
+    /** @var array<string, string> Cached resolved pdftotext binary path per plugin namespace. */
+    protected static array $pdftotextcache = [];
+
     /**
      * Extract combined searchable text from all files attached to a Moodle search document.
      *
@@ -123,10 +132,17 @@ class file_extractor {
             return '';
         }
 
+        $contenthash = (string)$file->get_contenthash();
+        if ($contenthash !== '' && array_key_exists($contenthash, self::$contenthashcache)) {
+            return self::$contenthashcache[$contenthash];
+        }
+
         // Plain-text and markup formats can be extracted in memory without a temp file.
         if (self::is_inline_text_format($ext, $mimetype)) {
             $raw = (string)$file->get_content();
-            return self::extract_text_from_string($raw, $filename, $mimetype, $plugin);
+            $extracted = self::extract_text_from_string($raw, $filename, $mimetype, $plugin);
+            self::store_contenthash_cache($contenthash, $extracted);
+            return $extracted;
         }
 
         $temppath = $file->copy_content_to_temp('search_typesense');
@@ -135,10 +151,34 @@ class file_extractor {
         }
 
         try {
-            return self::extract_text_from_path($temppath, $filename, $mimetype, $plugin);
+            $extracted = self::extract_text_from_path($temppath, $filename, $mimetype, $plugin);
+            self::store_contenthash_cache($contenthash, $extracted);
+            return $extracted;
         } finally {
             @unlink($temppath);
         }
+    }
+
+    /**
+     * Store extracted plain text in the bounded in-memory contenthash cache.
+     *
+     * @param string $contenthash Moodle file SHA-1 contenthash.
+     * @param string $text Extracted text (may be empty for scanned image PDFs).
+     * @return void
+     */
+    protected static function store_contenthash_cache(string $contenthash, string $text): void {
+        if ($contenthash === '') {
+            return;
+        }
+        if (count(self::$contenthashcache) >= self::MAX_CACHE_ENTRIES) {
+            self::$contenthashcache = array_slice(
+                self::$contenthashcache,
+                (int)(self::MAX_CACHE_ENTRIES / 2),
+                null,
+                true
+            );
+        }
+        self::$contenthashcache[$contenthash] = $text;
     }
 
     /**
@@ -410,25 +450,33 @@ class file_extractor {
     protected static function extract_pdf(string $filepath, string $plugin = 'search_typesense'): string {
         // 1. pdftotext binary (poppler-utils) if available.
         $pdftotext = self::resolve_pdftotext_binary($plugin);
+        $pdftotextparsed = false;
         if ($pdftotext !== '') {
-            $clitext = self::run_pdftotext($pdftotext, $filepath);
+            $clitext = self::run_pdftotext($pdftotext, $filepath, $pdftotextparsed);
             if ($clitext !== '') {
                 return $clitext;
             }
         }
 
-        // 2. Moodle's standard Ghostscript binary ($CFG->pathtogs) with txtwrite device.
-        $gstext = self::run_ghostscript_txtwrite($filepath);
-        if ($gstext !== '') {
-            return $gstext;
+        // 2. Fast in-memory pure-PHP PDF stream extractor before spawning Ghostscript subprocesses.
+        $raw = (string)@file_get_contents($filepath);
+        if ($raw !== '') {
+            $nativetext = self::extract_pdf_text_native($raw);
+            unset($raw);
+            if ($nativetext !== '') {
+                return $nativetext;
+            }
         }
 
-        // 3. Universal pure-PHP PDF stream extractor fallback.
-        $raw = (string)@file_get_contents($filepath);
-        if ($raw === '') {
-            return '';
+        // 3. Only fall back to Ghostscript if pdftotext did not already parse the PDF cleanly.
+        if (!$pdftotextparsed) {
+            $gstext = self::run_ghostscript_txtwrite($filepath);
+            if ($gstext !== '') {
+                return $gstext;
+            }
         }
-        return self::extract_pdf_text_native($raw);
+
+        return '';
     }
 
     /**
@@ -440,8 +488,13 @@ class file_extractor {
     public static function resolve_pdftotext_binary(string $plugin = 'search_typesense'): string {
         global $CFG;
 
-        $candidates = [];
         $configured = trim((string)get_config($plugin, 'pathtopdftotext'));
+        $cachekey = $plugin . ':' . $configured;
+        if (array_key_exists($cachekey, self::$pdftotextcache)) {
+            return self::$pdftotextcache[$cachekey];
+        }
+
+        $candidates = [];
         if ($configured !== '') {
             $candidates[] = $configured;
         }
@@ -454,9 +507,11 @@ class file_extractor {
 
         foreach ($candidates as $candidate) {
             if ($candidate !== '' && @is_file($candidate) && @is_executable($candidate)) {
+                self::$pdftotextcache[$cachekey] = $candidate;
                 return $candidate;
             }
         }
+        self::$pdftotextcache[$cachekey] = '';
         return '';
     }
 
@@ -465,9 +520,11 @@ class file_extractor {
      *
      * @param string $binary Validated pdftotext executable path.
      * @param string $filepath Path to PDF file.
+     * @param bool $parsedcleanly Set to true when pdftotext exits with status 0.
      * @return string
      */
-    protected static function run_pdftotext(string $binary, string $filepath): string {
+    protected static function run_pdftotext(string $binary, string $filepath, bool &$parsedcleanly = false): string {
+        $parsedcleanly = false;
         if (!function_exists('exec')) {
             return '';
         }
@@ -478,6 +535,9 @@ class file_extractor {
         $output = [];
         $returnvar = 0;
         @exec($cmd, $output, $returnvar);
+        if ($returnvar === 0) {
+            $parsedcleanly = true;
+        }
         if ($returnvar !== 0 || empty($output)) {
             return '';
         }
@@ -500,7 +560,7 @@ class file_extractor {
             return '';
         }
         $cmd = escapeshellcmd($gs)
-            . ' -sDEVICE=txtwrite -q -dNOPAUSE -dBATCH -dSAFER -dLastPage=100 -sOutputFile=- '
+            . ' -sDEVICE=txtwrite -q -dNOPAUSE -dBATCH -dSAFER -dLastPage=25 -sOutputFile=- '
             . escapeshellarg($filepath)
             . ' 2>/dev/null';
         $output = [];
