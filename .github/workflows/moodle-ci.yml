@@ -90,18 +90,7 @@ jobs:
         run: moodle-plugin-ci mustache
 
       - name: Grunt
-        continue-on-error: true
         run: moodle-plugin-ci grunt
-
-      - name: Export built AMD bundles
-        if: ${{ matrix.php == '8.2' }}
-        run: |
-          (cd moodle && npx grunt amd --root=search/engine/typesense)
-          echo "=== REINDEX_STATUS_MIN_JS ==="
-          base64 -w 0 moodle/search/engine/typesense/amd/build/reindex_status.min.js && echo ""
-          echo "=== REINDEX_STATUS_MAP ==="
-          base64 -w 0 moodle/search/engine/typesense/amd/build/reindex_status.min.js.map && echo ""
-          echo "=== END_AMD ==="
 
       - name: PHPUnit tests
         run: moodle-plugin-ci phpunit
