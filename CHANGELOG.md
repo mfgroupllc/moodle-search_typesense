@@ -4,6 +4,17 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.14] - 2026-11-13
+
+### Added
+- **Search Only Courses the User Can Open (`\search_typesense\access_manager::accessible_courseids`, `\search_typesense\candidate_engine`):**
+  - Users without site-wide course access now only have content requested from Typesense for courses they are enrolled in, plus visible courses open through the configured enrollment methods (Guest access by default). On large sites this makes searches several times faster and stops them reaching the processing limit before finding results. Matching course titles are still looked up across the whole site, the Courses tab is not narrowed, and Moodle's access checks still run on every result.
+  - New settings under **Connection & Scopes**: **Search only courses the user can open**, **Enrollment methods that open a course without enrolling**, and **Reuse a user's course list for**.
+- **Video Time Results Near the Top (`\search_typesense\candidate_engine::prepend_priority_videotime`):**
+  - Video Time activities whose title matches the search are shown after matching courses and before other content on the first page, controlled by **Show matching Video Time activities near the top**.
+
+---
+
 ## [1.1.13] - 2026-11-13
 
 ### Changed

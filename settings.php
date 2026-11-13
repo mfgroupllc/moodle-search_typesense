@@ -138,6 +138,36 @@ if ($ADMIN->fulltree) {
         0
     ));
 
+    $settings->add(new admin_setting_configcheckbox(
+        'search_typesense/narrowcandidates',
+        new lang_string('narrowcandidates', 'search_typesense'),
+        new lang_string('narrowcandidates_desc', 'search_typesense'),
+        1
+    ));
+
+    $openaccesschoices = [];
+    if (!during_initial_install()) {
+        foreach (array_keys(core_component::get_plugin_list('enrol')) as $enrolname) {
+            $openaccesschoices[$enrolname] = get_string('pluginname', 'enrol_' . $enrolname);
+        }
+        core_collator::asort($openaccesschoices);
+    }
+    $settings->add(new admin_setting_configmultiselect(
+        'search_typesense/openaccessenrol',
+        new lang_string('openaccessenrol', 'search_typesense'),
+        new lang_string('openaccessenrol_desc', 'search_typesense'),
+        ['guest'],
+        $openaccesschoices
+    ));
+
+    $settings->add(new admin_setting_configduration(
+        'search_typesense/narrowcachettl',
+        new lang_string('narrowcachettl', 'search_typesense'),
+        new lang_string('narrowcachettl_desc', 'search_typesense'),
+        5 * MINSECS,
+        MINSECS
+    ));
+
     $inferbutton = html_writer::div(
         html_writer::link(
             $inferurl,
@@ -242,6 +272,13 @@ if (isset($ADMIN) && $ADMIN->locate('searchplugins')) {
                     'search_typesense/enablevideotimetab',
                     new lang_string('enablevideotimetab', 'search_typesense'),
                     new lang_string('enablevideotimetab_desc', 'search_typesense'),
+                    1
+                ));
+
+                $contentsettings->add(new admin_setting_configcheckbox(
+                    'search_typesense/prioritizevideotime',
+                    new lang_string('prioritizevideotime', 'search_typesense'),
+                    new lang_string('prioritizevideotime_desc', 'search_typesense'),
                     1
                 ));
 

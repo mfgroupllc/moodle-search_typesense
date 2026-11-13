@@ -42,6 +42,9 @@ class access_manager extends \core_search\manager {
     /** @var array Course IDs currently being evaluated, as a set. */
     private $candidatecourses = [];
 
+    /** @var int Above this many accessible courses, narrowing the backend query is not worthwhile. */
+    private const MAX_NARROWED_COURSES = 1000;
+
     /** @var array Context maps already computed, grouped by the original search scope. */
     private $contextcache = [];
 
@@ -308,6 +311,102 @@ class access_manager extends \core_search\manager {
         }
         // Core interprets an empty limit as ALL courses. Never pass it through.
         return $ids ? parent::get_all_courses($ids) : [];
+    }
+
+    /**
+     * Return the courses whose content the current user can open, for narrowing backend candidates.
+     *
+     * This only reduces the candidates requested from Typesense. Moodle's access checks still run on
+     * every candidate, so a course listed here never makes anything visible by itself.
+     *
+     * @return int[]|null Course IDs including the site course, or null when candidates are not narrowed.
+     */
+    public function accessible_courseids(): ?array {
+        global $USER;
+        $enabled = get_config('search_typesense', 'narrowcandidates');
+        if ($enabled !== false && !(bool)$enabled) {
+            return null;
+        }
+        $userid = (int)($USER->id ?? 0);
+        $ttl = self::narrow_cache_ttl();
+        $cache = \cache::make('search_typesense', 'accessiblecourses');
+        $cached = $cache->get('u' . $userid);
+        if ($ttl > 0 && is_array($cached) && (time() - (int)($cached['ts'] ?? 0)) < $ttl) {
+            return $cached['ids'];
+        }
+        $ids = $this->compute_accessible_courseids($userid);
+        $cache->set('u' . $userid, ['ts' => time(), 'ids' => $ids]);
+        return $ids;
+    }
+
+    /**
+     * Work out the accessible course set for a user without consulting the cache.
+     *
+     * Users who can view courses site-wide, or who hold a role in a course category, are never narrowed.
+     *
+     * @param int $userid Current user ID (0 when not logged in).
+     * @return int[]|null
+     */
+    private function compute_accessible_courseids(int $userid): ?array {
+        global $DB;
+        if (is_siteadmin() || has_capability('moodle/course:view', \context_system::instance())) {
+            return null;
+        }
+        $ids = [];
+        if ($userid > 0 && !isguestuser()) {
+            $sql = "SELECT 1
+                      FROM {role_assignments} ra
+                      JOIN {context} ctx ON ctx.id = ra.contextid
+                     WHERE ra.userid = :userid AND ctx.contextlevel = :contextlevel";
+            if ($DB->record_exists_sql($sql, ['userid' => $userid, 'contextlevel' => CONTEXT_COURSECAT])) {
+                return null;
+            }
+            $ids = array_keys(enrol_get_my_courses('id', 'id'));
+        }
+        $ids = self::normalise_ids(array_merge($ids, self::open_access_courseids(), [(int)SITEID]));
+        return count($ids) > self::MAX_NARROWED_COURSES ? null : $ids;
+    }
+
+    /**
+     * Return visible courses that can be opened without an enrollment through the configured enrollment methods.
+     *
+     * @return int[]
+     */
+    private static function open_access_courseids(): array {
+        global $DB;
+        $configured = get_config('search_typesense', 'openaccessenrol');
+        $methods = $configured === false
+            ? ['guest']
+            : array_values(array_filter(array_map('trim', explode(',', (string)$configured))));
+        if (!$methods) {
+            return [];
+        }
+        $ttl = self::narrow_cache_ttl();
+        $cache = \cache::make('search_typesense', 'openaccesscourses');
+        $key = 'm' . sha1(implode(',', $methods));
+        $cached = $cache->get($key);
+        if ($ttl > 0 && is_array($cached) && (time() - (int)($cached['ts'] ?? 0)) < $ttl) {
+            return $cached['ids'];
+        }
+        [$insql, $params] = $DB->get_in_or_equal($methods, SQL_PARAMS_NAMED, 'enrol');
+        $params['status'] = ENROL_INSTANCE_ENABLED;
+        $sql = "SELECT DISTINCT e.courseid
+                  FROM {enrol} e
+                  JOIN {course} c ON c.id = e.courseid
+                 WHERE e.status = :status AND c.visible = 1 AND e.enrol $insql";
+        $ids = self::normalise_ids($DB->get_fieldset_sql($sql, $params));
+        $cache->set($key, ['ts' => time(), 'ids' => $ids]);
+        return $ids;
+    }
+
+    /**
+     * Return how long, in seconds, accessible course sets are reused before being worked out again.
+     *
+     * @return int
+     */
+    private static function narrow_cache_ttl(): int {
+        $ttl = get_config('search_typesense', 'narrowcachettl');
+        return $ttl === false ? 300 : max(0, (int)$ttl);
     }
 
     /**

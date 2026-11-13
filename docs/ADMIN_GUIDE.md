@@ -35,6 +35,13 @@ A shared tab bar at the top of every page lets administrators switch between:
 
 ---
 
+### Searching Only Courses a User Can Open
+On large sites most matches for a common word sit in courses a given student cannot open, so Moodle would spend its time discarding them. With **Search only courses the user can open** enabled (the default), users without site-wide course access only have content requested for:
+- courses they are enrolled in, and
+- visible courses open through the methods selected in **Enrollment methods that open a course without enrolling** (Guest access by default).
+
+Matching course titles are still looked up across the whole site, the Courses tab is not narrowed, Moodle's access checks still run on every result, and administrators, staff with site-wide course access, and users with a role in a course category are never narrowed. **Reuse a user's course list for** controls how long the list is cached (5 minutes by default); a new enrollment can take that long to appear in search. If content in an open course is missing for non-enrolled users, add that course's enrollment method to the list.
+
 ## 2. Content, Users & Integrations
 
 ### Attached Document & File Content Indexing
@@ -62,3 +69,4 @@ When the **Video Time (`mod_videotime`)** activity plugin is installed on your M
 | :--- | :--- | :--- |
 | **Show Video Time filter button** | Enabled | Displays a dedicated **Video Time** filter button on the search page and inside the InstantSearch dropdown. |
 | **Video Time button label** | `Video Time` | Customizes the button label (for example, `Video Library` or `Lecture Videos`). |
+- **Show matching Video Time activities near the top:** When enabled (the default), Video Time activities whose title matches the search appear after matching courses and before other content on the first page of results and in the Typesense Pro dropdown.

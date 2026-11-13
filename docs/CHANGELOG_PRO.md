@@ -4,6 +4,20 @@ All notable updates to **Typesense Pro (`local_typesensepro`)** for Moodle are d
 
 ---
 
+## [1.1.11] - 2026-11-13
+
+### Changed
+- **InstantSearch Results for Students (`\local_typesensepro\instant_engine`):**
+  - The dropdown now uses `search_typesense` 1.1.14's accessible-course narrowing, so users who can open only a few courses see matching content instead of an empty list.
+  - Matching Video Time activities are shown after courses. Courses, Video Time activities and, for staff, users each take up to a quarter of the rows, leaving the rest for other content.
+  - New **Rows in the InstantSearch dropdown** setting (6, 8 or 10; default 8).
+  - When **Search everything** finds nothing, the dropdown retries in **Current courses** and switches scope automatically.
+  - When the quick search budget runs out before any result is found, the dropdown now points to **View all results** instead of reporting no matches.
+- **Dependency (`version.php`):**
+  - Now requires `search_typesense` 1.1.14 (`2026111301`) or later.
+
+---
+
 ## [1.1.10] - 2026-11-13
 
 ### Changed & Fixed (Moodle Marketplace Review Follow-Up)

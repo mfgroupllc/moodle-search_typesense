@@ -109,6 +109,13 @@ class candidate_engine extends engine {
         if ($scope === [] || !$areas) {
             return $this->page_result([], 0, false, false);
         }
+        // The Courses tab lists courses a user may be able to join, so it is never narrowed.
+        $accessible = ($areas === ['core_course-course']) ? null : $this->accessmanager->accessible_courseids();
+        if ($accessible !== null) {
+            // Ask the backend only for content in courses this user can open. Access is still checked per candidate.
+            $filters = clone $filters;
+            $filters->candidatecourseids = $accessible;
+        }
 
         $params = $this->candidate_params($filters, $scope, $areas);
         $client = $this->get_client();
@@ -127,6 +134,24 @@ class candidate_engine extends engine {
         ) {
             $maxpriority = ($areas === ['core_course-course']) ? $target : min(5, $target);
             $documents = $this->prepend_priority_courses($filters, $initialscope, $seen, $started, $maxpriority);
+        }
+        $videoareas = $this->priority_videotime_areas($areas);
+        if (
+            $page === 0 && $isrelevancesort && $videoareas &&
+                trim((string)($filters->q ?? '')) !== '' && trim((string)$filters->q) !== '*' &&
+                count($documents) < $target
+        ) {
+            $videodocs = $this->prepend_priority_videotime(
+                $filters,
+                $scope,
+                $videoareas,
+                $seen,
+                $started,
+                min(3, $target - count($documents))
+            );
+            if ($videodocs) {
+                $documents = array_merge($documents, $videodocs);
+            }
         }
         if (
             $page === 0 && $isrelevancesort && in_array(user_profile_fields::USER_AREA_ID, $areas, true) &&
@@ -265,6 +290,10 @@ class candidate_engine extends engine {
         if ($scope !== null) {
             $clauses[] = 'courseid:[' . implode(',', $scope) . ']';
         }
+        $accessibleclause = $this->accessible_clause($filters);
+        if ($accessibleclause !== '') {
+            $clauses[] = $accessibleclause;
+        }
         foreach (['contextids' => 'contextid', 'userids' => 'userid', 'groupids' => 'groupid'] as $key => $field) {
             if (!empty($filters->{$key})) {
                 $ids = access_manager::normalise_ids((array)$filters->{$key});
@@ -306,6 +335,149 @@ class candidate_engine extends engine {
             $params['sort_by'] = 'modified:asc';
         }
         return pro_bridge::extend_candidate_params($params, $filters, $scope, $areas);
+    }
+
+    /**
+     * Build the backend clause that narrows candidates to courses the user can open.
+     *
+     * Matching course titles are still found site-wide by prepend_priority_courses(), which does not use this clause.
+     *
+     * @param \stdClass $filters Search filters, carrying candidatecourseids when narrowing applies.
+     * @return string Filter clause, or an empty string when candidates are not narrowed.
+     */
+    protected function accessible_clause(\stdClass $filters): string {
+        if (!isset($filters->candidatecourseids) || !is_array($filters->candidatecourseids)) {
+            return '';
+        }
+        $ids = access_manager::normalise_ids($filters->candidatecourseids);
+        return 'courseid:[' . ($ids ? implode(',', $ids) : '-1') . ']';
+    }
+
+    /**
+     * Return the Video Time search areas whose title matches are surfaced near the top of results.
+     *
+     * @param string[] $areas Enabled/requested areas.
+     * @return string[] Empty when Video Time results are not prioritized for this search.
+     */
+    protected function priority_videotime_areas(array $areas): array {
+        $enabled = get_config('search_typesense', 'prioritizevideotime');
+        if (($enabled !== false && !(bool)$enabled) || !course_scope::videotime_available()) {
+            return [];
+        }
+        $videoareas = array_values(array_intersect(course_scope::videotime_areaids(), $areas));
+        // When only Video Time is being searched the main scan already returns these results in order.
+        return count($videoareas) === count($areas) ? [] : $videoareas;
+    }
+
+    /**
+     * Surface Video Time activities whose title matches the query, after courses and before other content.
+     *
+     * @param \stdClass $filters Search filters.
+     * @param array|null $scope Resolved course restriction.
+     * @param string[] $videoareas Video Time search area IDs.
+     * @param array $seen Reference to seen document IDs map.
+     * @param float $started Request start microtime.
+     * @param int $maxlimit Maximum priority Video Time documents to return.
+     * @return \core_search\document[]
+     */
+    protected function prepend_priority_videotime(
+        \stdClass $filters,
+        ?array $scope,
+        array $videoareas,
+        array &$seen,
+        float $started,
+        int $maxlimit
+    ): array {
+        global $USER;
+        if ($maxlimit <= 0 || !$videoareas || microtime(true) - $started >= static::TIME_BUDGET) {
+            return [];
+        }
+        $tick = chr(96);
+        $quoted = array_map(static function ($area) use ($tick) {
+            return $tick . str_replace($tick, '', $area) . $tick;
+        }, $videoareas);
+        $clauses = [
+            'areaid:[' . implode(',', $quoted) . ']',
+            '(owneruserid:0 || owneruserid:' . (int)$USER->id . ')',
+        ];
+        if ($scope !== null) {
+            $clauses[] = 'courseid:[' . implode(',', $scope) . ']';
+        }
+        $accessibleclause = $this->accessible_clause($filters);
+        if ($accessibleclause !== '') {
+            $clauses[] = $accessibleclause;
+        }
+        if (!empty($filters->timestart)) {
+            $clauses[] = 'modified:>=' . (int)$filters->timestart;
+        }
+        if (!empty($filters->timeend)) {
+            $clauses[] = 'modified:<=' . (int)$filters->timeend;
+        }
+        $rawq = (string)($filters->q ?? '');
+        $normq = trim((string)preg_replace('/_+/', ' ', $rawq));
+        $params = [
+            'q' => $normq !== '' ? $normq : $rawq,
+            'query_by' => 'title',
+            'drop_tokens_threshold' => 0,
+            'prioritize_token_position' => 'true',
+            'per_page' => 25,
+            'page' => 1,
+            'prefix' => 'true',
+            'exclude_fields' => 'embedding',
+            'filter_by' => implode(' && ', $clauses),
+        ];
+        try {
+            $response = $this->get_client()->search($this->get_collection_name(), $params);
+        } catch (\Throwable $e) {
+            return [];
+        }
+        if (empty($response['hits']) || !is_array($response['hits'])) {
+            return [];
+        }
+
+        $candidates = [];
+        $courseids = [];
+        foreach ($response['hits'] as $hit) {
+            $data = $this->candidate_data($hit);
+            if ($data === null || isset($seen[$data['id']])) {
+                continue;
+            }
+            if (!$this->matches_filters($data, $filters, $scope, $videoareas)) {
+                continue;
+            }
+            $candidates[] = $data;
+            $courseids[(int)$data['courseid']] = (int)$data['courseid'];
+        }
+        if (!$candidates) {
+            return [];
+        }
+
+        $access = $this->accessmanager->candidate_access(array_values($courseids), $filters);
+        $documents = [];
+        foreach ($candidates as $data) {
+            if (microtime(true) - $started >= static::TIME_BUDGET) {
+                break;
+            }
+            if (!$this->context_allows($data, $access)) {
+                continue;
+            }
+            $area = $this->get_search_area($data['areaid']);
+            if (!$area) {
+                continue;
+            }
+            try {
+                if ($area->check_access($data['itemid']) === \core_search\manager::ACCESS_GRANTED) {
+                    $seen[$data['id']] = true;
+                    $documents[] = $this->to_document($area, $data);
+                }
+            } catch (\dml_exception $e) {
+                continue;
+            }
+            if (count($documents) >= $maxlimit) {
+                break;
+            }
+        }
+        return $documents;
     }
 
     /**

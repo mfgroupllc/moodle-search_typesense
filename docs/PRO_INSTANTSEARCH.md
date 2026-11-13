@@ -56,8 +56,8 @@ Configure these options under **Site administration $\rightarrow$ Plugins $\righ
 | Setting | Default | Description |
 | :--- | :--- | :--- |
 | **Enable Typesense Pro features** | Enabled | Master toggle for all Typesense Pro features. |
+| **Rows in the InstantSearch dropdown** | `8` | Choose 6, 8 or 10 rows. Matching courses, Video Time activities and, for staff, users each take up to a quarter of the rows; the remaining rows show other matching content. |
 | **Enable live navbar InstantSearch** | Enabled | Turns Moodle's top navbar search input and Global Search box into a live type-as-you-go dropdown. |
-| **InstantSearch results limit** | `6` | Maximum number of authorized results shown in the live dropdown (`1`–`10`). |
 | **Show AI Overview button in InstantSearch** | Enabled | Displays a 1-click **✨ AI Overview** link in the dropdown footer when AI Overviews are enabled. |
 | **Show search latency badge** | Disabled | Optional millisecond timing badge (`e.g., 28 ms`) in the dropdown header for administrators testing performance. |
 | **Show Guided Discovery cards on empty search page** | Enabled | Displays clickable example search cards when a user opens the Global Search page before typing a query. |

@@ -3,7 +3,7 @@
 A high-performance Moodle **global search** engine plugin that indexes your Moodle site into [Typesense](https://typesense.org) and serves sub-second, typo-tolerant, accent-insensitive search at multi-year institutional scale.
 
 - **Component:** `search_typesense`
-- **Current Release:** `v1.1.13` (`2026111300`)
+- **Current Release:** `v1.1.14` (`2026111301`)
 - **License:** GNU GPL v3 or later ([`LICENSE`](./LICENSE))
 - **Supported Moodle Versions:** Moodle 4.5 LTS and Moodle 5.x
 - **Supported Databases:** MySQL / MariaDB and PostgreSQL
