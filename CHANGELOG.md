@@ -4,6 +4,27 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.13] - 2026-11-13
+
+### Changed
+- **Moodle 4.5 LTS Minimum Version (`version.php`):**
+  - Raised the minimum supported release to Moodle 4.5 LTS (`2024100700`), which provides the hooks and External Services APIs the plugin relies on, and removed the Moodle 4.1 compatibility shim from `\search_typesense\external\get_reindex_status`.
+- **Non-Destructive Context Path Repair (`\search_typesense\engine::repair_unbuilt_contexts`):**
+  - **Repair missing context paths** now only asks Moodle's context API to rebuild missing paths. It no longer deletes any course module, block, or context records, and indexing runs no longer trigger the repair automatically.
+- **Task Manager API for Background Re-index Queue (`\search_typesense\engine`):**
+  - Queued re-index tasks are now listed and cancelled through `\core\task\manager` instead of direct table access. A task that cron is already running is left to finish.
+  - Fast Area Re-index no longer clears Moodle's gradual re-index request queue.
+- **Privacy API (`\search_typesense\privacy\provider`):**
+  - Implemented the plugin and userlist request providers alongside the metadata provider.
+- **Release Packaging (`.gitattributes`):**
+  - Release archives now contain only the `search_typesense` documentation.
+
+### Fixed
+- **Search Page Styles (`styles.css`):**
+  - Restored the scope button, search area badge, and user profile field styles that were dropped from `styles.css` in 1.1.12.
+
+---
+
 ## [1.1.12] - 2026-11-12
 
 ### Changed

@@ -352,29 +352,22 @@ class engine extends \core_search\engine {
     }
 
     /**
-     * Run pre-indexing preparation, raising memory limits and repairing unbuilt context paths.
+     * Run pre-indexing preparation, raising memory limits.
      *
      * @param bool $fullindex True if a full index will be performed.
      * @return void
      */
     public function index_starting($fullindex = false) {
-        global $DB;
         raise_memory_limit(MEMORY_HUGE);
-        try {
-            if ($DB->record_exists_select('context', 'path IS NULL OR depth = 0')) {
-                self::repair_unbuilt_contexts();
-            }
-        } catch (\Throwable $e) {
-            debugging('Context path check skipped: ' . $e->getMessage(), DEBUG_DEVELOPER);
-        }
     }
 
     /**
-     * Repair unbuilt {context} rows and remove orphaned contexts whose parent course/context was deleted.
+     * Rebuild unbuilt {context} paths using Moodle's context API.
      *
-     * Fixes the root cause of Moodle core's Gradual Re-index page failing with
-     * "moodle_database::get_in_or_equal() does not accept empty arrays" when orphaned
-     * {course_modules} or {block_instances} records reference deleted courses/contexts.
+     * Unbuilt rows (NULL path or zero depth) make Moodle core's Gradual Re-index page fail with
+     * "moodle_database::get_in_or_equal() does not accept empty arrays". This only asks core to
+     * rebuild the missing paths; it never deletes records. Rows that core cannot rebuild are
+     * orphans and are left for Moodle's own context cleanup task.
      *
      * @return array{before:int, after:int, repaired:int}
      */
@@ -389,55 +382,9 @@ class engine extends \core_search\engine {
         }
 
         try {
-            \context_helper::cleanup_instances();
-        } catch (\Throwable $e) {
-            debugging('context_helper::cleanup_instances skipped: ' . $e->getMessage(), DEBUG_DEVELOPER);
-        }
-        try {
             \context_helper::build_all_paths(false);
         } catch (\Throwable $e) {
             debugging('context_helper::build_all_paths skipped: ' . $e->getMessage(), DEBUG_DEVELOPER);
-        }
-
-        // Any remaining rows with NULL path or 0 depth are orphans whose parent course or parent context no longer exists.
-        $remaining = $DB->get_records_select(
-            'context',
-            'path IS NULL OR depth = 0',
-            null,
-            'id ASC',
-            'id, contextlevel, instanceid'
-        );
-        if ($remaining) {
-            $orphancmids = [];
-            $orphanbiids = [];
-            $orphanctxids = [];
-            foreach ($remaining as $ctx) {
-                if ((int)$ctx->id === SYSCONTEXTID) {
-                    continue;
-                }
-                $orphanctxids[] = (int)$ctx->id;
-                if ((int)$ctx->contextlevel === CONTEXT_MODULE && !empty($ctx->instanceid)) {
-                    $cm = $DB->get_record('course_modules', ['id' => (int)$ctx->instanceid], 'id, course');
-                    if ($cm && !$DB->record_exists('course', ['id' => (int)$cm->course])) {
-                        $orphancmids[] = (int)$cm->id;
-                    }
-                } else if ((int)$ctx->contextlevel === CONTEXT_BLOCK && !empty($ctx->instanceid)) {
-                    $bi = $DB->get_record('block_instances', ['id' => (int)$ctx->instanceid], 'id, parentcontextid');
-                    if ($bi && !$DB->record_exists('context', ['id' => (int)$bi->parentcontextid])) {
-                        $orphanbiids[] = (int)$bi->id;
-                    }
-                }
-            }
-            if ($orphancmids) {
-                $DB->delete_records_list('course_modules', 'id', $orphancmids);
-            }
-            if ($orphanbiids) {
-                $DB->delete_records_list('block_instances', 'id', $orphanbiids);
-            }
-            if ($orphanctxids) {
-                $DB->delete_records_list('context', 'id', $orphanctxids);
-            }
-            \context_helper::reset_caches();
         }
 
         $after = (int)$DB->count_records_select('context', 'path IS NULL OR depth = 0');
@@ -487,42 +434,50 @@ class engine extends \core_search\engine {
      * @return array<int, array{id:int, areaid:string, deletefirst:bool, timestarted:int, timecreated:int}>
      */
     public static function get_queued_reindex_tasks(): array {
-        global $DB;
-        $classname = '\\search_typesense\\task\\fast_reindex_area_adhoc_task';
-        $altclassname = 'search_typesense\\task\\fast_reindex_area_adhoc_task';
         try {
-            [$insql, $params] = $DB->get_in_or_equal([$classname, $altclassname], SQL_PARAMS_NAMED);
-            $records = $DB->get_records_select('task_adhoc', "classname $insql", $params, 'id ASC');
+            $tasks = \core\task\manager::get_adhoc_tasks(\search_typesense\task\fast_reindex_area_adhoc_task::class);
         } catch (\Throwable $e) {
             return [];
         }
         $list = [];
-        foreach ($records as $rec) {
-            $data = json_decode((string)($rec->customdata ?? '{}'), true);
-            $list[(int)$rec->id] = [
-                'id' => (int)$rec->id,
+        foreach ($tasks as $task) {
+            $id = (int)$task->get_id();
+            $data = (array)($task->get_custom_data() ?? []);
+            $list[$id] = [
+                'id' => $id,
                 'areaid' => (string)($data['areaid'] ?? ''),
                 'deletefirst' => !empty($data['deletefirst']),
-                'timestarted' => (int)($rec->timestarted ?? 0),
-                'timecreated' => (int)($rec->timecreated ?? $data['queuedat'] ?? 0),
+                'timestarted' => (int)$task->get_timestarted(),
+                'timecreated' => (int)($data['queuedat'] ?? 0),
             ];
         }
+        ksort($list);
         return $list;
     }
 
     /**
      * Cancel queued fast_reindex_area_adhoc_task records (optionally filtered by areaid).
      *
+     * Tasks are claimed and completed through the task manager, so a task that cron is
+     * already running keeps its lock and is left to finish.
+     *
      * @param string $areaid Optional search area ID to cancel (empty = cancel all).
-     * @return int Number of task rows removed.
+     * @return int Number of queued tasks removed.
      */
     public static function cancel_queued_reindex_tasks(string $areaid = ''): int {
-        global $DB;
         $tasks = self::get_queued_reindex_tasks();
         $removed = 0;
         foreach ($tasks as $id => $info) {
-            if ($areaid === '' || $info['areaid'] === $areaid) {
-                $DB->delete_records('task_adhoc', ['id' => $id]);
+            if ($areaid !== '' && $info['areaid'] !== $areaid) {
+                continue;
+            }
+            try {
+                $task = \core\task\manager::get_adhoc_task($id);
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if ($task) {
+                \core\task\manager::adhoc_task_complete($task);
                 $removed++;
             }
         }
@@ -719,13 +674,10 @@ class engine extends \core_search\engine {
     /**
      * Reset a single search area's indexing state so the next bulk indexer run re-indexes it from scratch via NDJSON.
      *
-     * Also clears any slow context-level gradual reindex queue entries for this area in {search_index_requests}.
-     *
      * @param \core_search\base $searcharea Target search area instance.
      * @return void
      */
     public static function reset_area_for_reindex(\core_search\base $searcharea): void {
-        global $DB;
         [$componentconfigname, $varname] = $searcharea->get_config_var_name();
         $suffixes = [
             'indexingstart',
@@ -739,11 +691,6 @@ class engine extends \core_search\engine {
         ];
         foreach ($suffixes as $suffix) {
             unset_config($varname . '_' . $suffix, $componentconfigname);
-        }
-        try {
-            $DB->delete_records('search_index_requests', ['searcharea' => $searcharea->get_area_id()]);
-        } catch (\Throwable $e) {
-            debugging('Could not clear search_index_requests for area: ' . $e->getMessage(), DEBUG_DEVELOPER);
         }
     }
 
@@ -765,7 +712,6 @@ class engine extends \core_search\engine {
         int $timelimit = 0,
         ?\core\progress\base $progress = null
     ): array {
-        global $DB;
         \core_php_time_limit::raise(0);
         $this->infastreindex = true;
         $areaid = $searcharea->get_area_id();
@@ -784,11 +730,6 @@ class engine extends \core_search\engine {
                 $this->delete($areaid);
                 unset_config($varname . '_pkcursor', $componentconfigname);
                 unset_config($varname . '_partial', $componentconfigname);
-            }
-            try {
-                $DB->delete_records('search_index_requests', ['searcharea' => $areaid]);
-            } catch (\Throwable $e) {
-                debugging('Could not clear search_index_requests: ' . $e->getMessage(), DEBUG_DEVELOPER);
             }
 
             $indexingstart = time();

@@ -4,7 +4,7 @@ layout: home
 hero:
   name: "Typesense for Moodle"
   text: "Sub-Second Global Search, InstantSearch & AI Overviews"
-  tagline: "Administrator and user documentation for Typesense Search (v1.1.9) and Typesense Pro (v1.1.7) on Moodle 4.1 LTS, 4.5 LTS, and Moodle 5.x."
+  tagline: "Administrator and user documentation for Typesense Search (v1.1.13) and Typesense Pro (v1.1.10) on Moodle 4.5 LTS and Moodle 5.x."
   image:
     src: /typesense-icon.png
     alt: Typesense for Moodle
@@ -44,5 +44,5 @@ features:
 
 | Edition | Latest Release | Moodle Support | Availability |
 | :--- | :--- | :--- | :--- |
-| **Typesense Global Search (`search_typesense`)** | `v1.1.9` | Moodle 4.1 LTS, 4.5 LTS, 5.x | Free & Open-Source ([GitHub](https://github.com/mfgroupllc/moodle-search_typesense)) |
-| **Typesense Pro (`local_typesensepro`)** | `v1.1.7` | Moodle 4.5 LTS, 5.x | Commercial Subscription ([Moodle Marketplace](https://marketplace.moodle.com/plugins/local_typesensepro)) |
+| **Typesense Global Search (`search_typesense`)** | `v1.1.13` | Moodle 4.5 LTS, 5.x | Free & Open-Source ([GitHub](https://github.com/mfgroupllc/moodle-search_typesense)) |
+| **Typesense Pro (`local_typesensepro`)** | `v1.1.10` | Moodle 4.5 LTS, 5.x | Commercial Subscription ([Moodle Marketplace](https://marketplace.moodle.com/plugins/local_typesensepro)) |

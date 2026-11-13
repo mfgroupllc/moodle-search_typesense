@@ -4,6 +4,54 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.13] - 2026-11-13
+
+### Changed
+- **Moodle 4.5 LTS Minimum Version (`version.php`):**
+  - Raised the minimum supported release to Moodle 4.5 LTS (`2024100700`), which provides the hooks and External Services APIs the plugin relies on, and removed the Moodle 4.1 compatibility shim from `\search_typesense\external\get_reindex_status`.
+- **Non-Destructive Context Path Repair (`\search_typesense\engine::repair_unbuilt_contexts`):**
+  - **Repair missing context paths** now only asks Moodle's context API to rebuild missing paths. It no longer deletes any course module, block, or context records, and indexing runs no longer trigger the repair automatically.
+- **Task Manager API for Background Re-index Queue (`\search_typesense\engine`):**
+  - Queued re-index tasks are now listed and cancelled through `\core\task\manager` instead of direct table access. A task that cron is already running is left to finish.
+  - Fast Area Re-index no longer clears Moodle's gradual re-index request queue.
+- **Privacy API (`\search_typesense\privacy\provider`):**
+  - Implemented the plugin and userlist request providers alongside the metadata provider.
+- **Release Packaging (`.gitattributes`):**
+  - Release archives now contain only the `search_typesense` documentation.
+
+### Fixed
+- **Search Page Styles (`styles.css`):**
+  - Restored the scope button, search area badge, and user profile field styles that were dropped from `styles.css` in 1.1.12.
+
+---
+
+## [1.1.12] - 2026-11-12
+
+### Changed
+- **External Service, AMD Module & Documentation Packaging (`\search_typesense\external\get_reindex_status`, `amd/src/reindex_status.js`, `styles.css`):**
+  - Replaced inline `js_init_code` and `action=ajaxstatus` polling on `reindex_areas.php` with a Moodle External Service (`search_typesense_get_reindex_status` in `db/services.php`) and AMD module (`search_typesense/reindex_status`).
+  - Moved inline progress bar styling to `styles.css`.
+  - Included the `docs/` directory in release `.zip` archives so all relative links in `README.md` resolve offline.
+
+---
+
+## [1.1.11] - 2026-11-11
+
+### Changed
+- **Moodle Plugin CI (`moodle-plugin-ci`) Compliance & Workflow:**
+  - Resolved all `moodle-plugin-ci codechecker` (`phpcs --standard=moodle`) and `moodle-plugin-ci phpdoc` (`local_moodlecheck`) checks with 0 errors and 0 warnings, and added `.github/workflows/moodle-ci.yml`.
+
+---
+
+## [1.1.10] - 2026-11-11
+
+### Added & Improved
+- **Hide Non-Enrollable Courses from Student Search Results (`search_typesense/restrictunenrolledcourses`):**
+  - Added a new administration setting under **Content, Users & Integrations $\rightarrow$ Hide non-enrollable courses from student search results** (enabled by default).
+  - When enabled, students only see course results (`core_course-course`) for courses they are enrolled in, can already access (such as open guest or auto-enroll courses), or can actively self-enroll in. Historical and cohort-locked courses they cannot join are hidden from students while remaining searchable for staff, faculty, and managers.
+
+---
+
 ## [1.1.9] - 2026-11-10
 
 ### Added & Improved

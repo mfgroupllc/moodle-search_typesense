@@ -25,27 +25,13 @@
 namespace search_typesense\external;
 
 use context_system;
-use html_writer;
-use search_typesense\engine;
-
-defined('MOODLE_INTERNAL') || die();
-
-global $CFG;
-require_once($CFG->libdir . '/externallib.php');
-
-if (!class_exists('\\core_external\\external_api')) {
-    class_alias('\\external_api', '\\core_external\\external_api');
-    class_alias('\\external_function_parameters', '\\core_external\\external_function_parameters');
-    class_alias('\\external_multiple_structure', '\\core_external\\external_multiple_structure');
-    class_alias('\\external_single_structure', '\\core_external\\external_single_structure');
-    class_alias('\\external_value', '\\core_external\\external_value');
-}
-
 use core_external\external_api;
 use core_external\external_function_parameters;
 use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
+use html_writer;
+use search_typesense\engine;
 
 /**
  * Returns live background re-index progress and per-area document counts for the admin page.

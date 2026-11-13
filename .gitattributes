@@ -2,4 +2,8 @@
 /.gitignore export-ignore
 /.github export-ignore
 /docs/.vitepress export-ignore
+/docs/PRO_*.md export-ignore
+/docs/CHANGELOG_PRO.md export-ignore
+/docs/index.md export-ignore
+/docs/public export-ignore
 /dist export-ignore

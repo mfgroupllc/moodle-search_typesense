@@ -22,7 +22,7 @@ Navigate to **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\r
 - **Cancel Queued Tasks:** Cancels any pending background re-index tasks waiting in the queue.
 
 ### Repairing Missing Context Paths
-If courses were deleted in the past and left behind orphaned module records with missing context paths, a warning banner (**Unbuilt Context Paths Detected**) appears at the top of the Fast Area Re-index page. Click **Repair missing context paths** to clean up orphaned records and rebuild missing Moodle context paths in one click.
+If some Moodle context records have missing paths, a warning banner (**Unbuilt Context Paths Detected**) appears at the top of the Fast Area Re-index page. Click **Repair missing context paths** to ask Moodle to rebuild them in one click. The plugin never deletes records; rows that cannot be rebuilt belong to deleted courses and are removed by Moodle's own scheduled context cleanup task.
 
 ---
 

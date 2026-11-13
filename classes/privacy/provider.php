@@ -25,10 +25,17 @@
 namespace search_typesense\privacy;
 
 use core_privacy\local\metadata\collection;
-
+use core_privacy\local\request\approved_contextlist;
+use core_privacy\local\request\approved_userlist;
+use core_privacy\local\request\contextlist;
+use core_privacy\local\request\userlist;
 
 /**
  * Privacy provider declaring external Typesense index communication.
+ *
+ * This plugin has no database tables and stores no personal data itself. It acts as a conduit,
+ * sending search documents and queries to the configured Typesense server, so the request
+ * methods below have nothing to export or delete.
  *
  * @package    search_typesense
  * @copyright  2026 Christopher Murad <chrismurad@mfgrpllc.com>
@@ -36,7 +43,8 @@ use core_privacy\local\metadata\collection;
  */
 class provider implements
     \core_privacy\local\metadata\provider,
-    \core_privacy\local\request\subsystem\plugin_provider {
+    \core_privacy\local\request\core_userlist_provider,
+    \core_privacy\local\request\plugin\provider {
     /**
      * Returns metadata about external data sent to the Typesense server.
      *
@@ -60,5 +68,60 @@ class provider implements
             'query' => 'privacy:metadata:typesense:query',
         ], 'privacy:metadata:typesense');
         return $collection;
+    }
+
+    /**
+     * Get the list of contexts that contain user information for the specified user.
+     *
+     * @param int $userid The user to search.
+     * @return contextlist The contextlist containing the list of contexts used in this plugin.
+     */
+    public static function get_contexts_for_userid(int $userid): contextlist {
+        return new contextlist();
+    }
+
+    /**
+     * Get the list of users who have data within a context.
+     *
+     * @param userlist $userlist The userlist containing the list of users who have data in this context.
+     * @return void
+     */
+    public static function get_users_in_context(userlist $userlist): void {
+    }
+
+    /**
+     * Export all user data for the specified user, in the specified contexts.
+     *
+     * @param approved_contextlist $contextlist The approved contexts to export information for.
+     * @return void
+     */
+    public static function export_user_data(approved_contextlist $contextlist): void {
+    }
+
+    /**
+     * Delete all data for all users in the specified context.
+     *
+     * @param \context $context The specific context to delete data for.
+     * @return void
+     */
+    public static function delete_data_for_all_users_in_context(\context $context): void {
+    }
+
+    /**
+     * Delete all user data for the specified user, in the specified contexts.
+     *
+     * @param approved_contextlist $contextlist The approved contexts and user information to delete information for.
+     * @return void
+     */
+    public static function delete_data_for_user(approved_contextlist $contextlist): void {
+    }
+
+    /**
+     * Delete multiple users within a single context.
+     *
+     * @param approved_userlist $userlist The approved context and user information to delete information for.
+     * @return void
+     */
+    public static function delete_data_for_users(approved_userlist $userlist): void {
     }
 }

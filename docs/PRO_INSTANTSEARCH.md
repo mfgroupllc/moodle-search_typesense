@@ -40,10 +40,10 @@ InstantSearch automatically surfaces the most direct matches to the top of the d
 ## 4. Guided Discovery Cards
 
 When users open the full Global Search page before entering a query, **Guided Discovery** displays helpful example search cards showing what they can search across your Moodle site:
-- **Inside Uploaded PDFs & Syllabi**
-- **Inside Video Time Lectures & Captions**
-- **Inside Course Books, Rubrics & Assignments**
-- **Ask AI Overview**
+- **Inside uploaded files**
+- **Inside Video Time activities** (shown only when the Video Time plugin is installed and its search tab is enabled)
+- **Inside activities**
+- **Ask a question** (shown only when AI Overviews are enabled)
 
 Clicking any example chip runs the search immediately so learners and faculty can see how Global Search works.
 

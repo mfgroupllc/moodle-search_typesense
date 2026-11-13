@@ -38,8 +38,8 @@ export default defineConfig({
       {
         text: 'Release Notes',
         items: [
-          { text: 'Typesense Search (v1.1.9)', link: '/CHANGELOG_CORE.html' },
-          { text: 'Typesense Pro (v1.1.7)', link: '/CHANGELOG_PRO.html' },
+          { text: 'Typesense Search (v1.1.13)', link: '/CHANGELOG_CORE.html' },
+          { text: 'Typesense Pro (v1.1.10)', link: '/CHANGELOG_PRO.html' },
         ],
       },
       { text: 'GitHub', link: 'https://github.com/mfgroupllc/moodle-search_typesense' },

@@ -16,8 +16,11 @@ When a user runs a search on the Global Search page, Typesense Pro can synthesiz
 
 ### Trigger Modes
 Administrators can choose how AI Overviews are triggered under **Typesense Pro (AI & InstantSearch)**:
-- **On-Demand Button *(Default)*:** Displays a **"Generate AI Overview from these results"** button above the search results so AI tokens are only used when a user explicitly requests an overview.
+- **On-Demand Button *(Default)*:** Displays a **"Generate AI overview from these results"** button above the search results so AI tokens are only used when a user explicitly requests an overview.
 - **Automatic on 3+ Word Queries:** Automatically generates an AI Overview whenever a user searches with 3 or more words.
+
+### AI Usage Policy Acceptance
+Moodle requires each user to accept the site AI usage policy before any AI feature is used on their behalf. The first time a user asks for an AI Overview, Typesense Pro displays the policy with **Accept and continue** and **Decline** buttons. Acceptance is recorded by Moodle's own AI subsystem only when the user presses **Accept and continue**; until then nothing is sent to the AI provider, including in automatic mode.
 
 ### Connecting Your AI Provider in Moodle
 AI Overviews and AI Category Classification use Moodle's built-in AI subsystem:
