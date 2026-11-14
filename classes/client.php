@@ -198,11 +198,23 @@ class client {
     /**
      * Does a collection exist?
      *
-     * @param string $name
+     * Checks the target collection directly rather than listing all collections so
+     * collection-scoped multi-tenant API keys work without global list permission.
+     *
+     * @param string $name Collection name.
      * @return bool
+     * @throws \moodle_exception On connection or authorization errors other than 404.
      */
     public function collection_exists($name) {
-        return in_array($name, $this->list_collections(), true);
+        try {
+            $this->get_collection((string)$name);
+            return true;
+        } catch (\moodle_exception $e) {
+            if ($e->debuginfo === 'HTTP 404') {
+                return false;
+            }
+            throw $e;
+        }
     }
 
     /**
