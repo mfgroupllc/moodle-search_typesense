@@ -4,6 +4,16 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.15] - 2026-11-15
+
+### Changed
+- **Collection-Scoped Multi-Tenant API Key Support (`\search_typesense\client::collection_exists`):**
+  - `collection_exists()` now queries `GET /collections/{name}` directly via `get_collection()` instead of listing all collections (`GET /collections`), returning `false` only on `HTTP 404` and rethrowing authorization/connection errors. Collection-scoped API keys on shared Typesense servers now work without global `collections:list` permission.
+- **Shared-Server Collection Naming Guidance (`lang/en/search_typesense.php`):**
+  - Updated the **Collection name** setting description (`collection_desc`) to remind administrators sharing one Typesense server across multiple Moodle instances to configure a unique collection name per site.
+
+---
+
 ## [1.1.14] - 2026-11-13
 
 ### Added
