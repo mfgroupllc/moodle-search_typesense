@@ -4,6 +4,16 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.16] - 2026-11-16
+
+### Added
+- **Server Health Diagnostics Dashboard (`health.php`, `\search_typesense\server_health`):**
+  - Added a dedicated **Server Health** admin page (`Site administration → Plugins → Search → Typesense → Server Health`) showing live `/health`, `/debug`, `/metrics.json`, `/stats.json`, and `/collections` telemetry from the configured Typesense server.
+  - Displays Typesense version, cluster/Raft role, active collection document/field counts, request latency, HTTP/error status checks, and host memory, swap, CPU, and disk pressure indicators (`ok` / `warning` / `critical`).
+  - Added `\search_typesense\client::get_server_health()` and `\search_typesense\engine::get_server_health()`, shared admin navigation pill integration (`admin_nav`), unit tests (`tests/server_health_test.php`), and documentation in `docs/ADMIN_GUIDE.md`.
+
+---
+
 ## [1.1.15] - 2026-11-15
 
 ### Changed

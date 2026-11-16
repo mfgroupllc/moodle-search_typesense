@@ -3,7 +3,7 @@
 A high-performance Moodle **global search** engine plugin that indexes your Moodle site into [Typesense](https://typesense.org) and serves sub-second, typo-tolerant, accent-insensitive search at multi-year institutional scale.
 
 - **Component:** `search_typesense`
-- **Current Release:** `v1.1.15` (`2026111500`)
+- **Current Release:** `v1.1.16` (`2026111600`)
 - **License:** GNU GPL v3 or later ([`LICENSE`](./LICENSE))
 - **Supported Moodle Versions:** Moodle 4.5 LTS and Moodle 5.x
 - **Supported Databases:** MySQL / MariaDB and PostgreSQL
@@ -16,7 +16,7 @@ A high-performance Moodle **global search** engine plugin that indexes your Mood
 - **Full Online Documentation Portal:** [https://www.chrismurad.com/moodle-typesense/docs/](https://www.chrismurad.com/moodle-typesense/docs/)
 - **[Getting Started Guide](./docs/GETTING_STARTED.md)** — Step-by-step installation, AWS CloudFormation setup, active category detection, and initial indexing.
 - **[How Search & Permissions Work](./docs/ARCHITECTURE.md)** — Moodle permission enforcement, what you can search, and active vs. historical scopes.
-- **[Administrator Settings Guide](./docs/ADMIN_GUIDE.md)** — Complete guide to all settings tabs, user profile search privacy, and Video Time integration.
+- **[Administrator Settings Guide](./docs/ADMIN_GUIDE.md)** — Complete guide to all settings tabs, user profile search privacy, Video Time integration, and Server Health diagnostics.
 - **[Indexing & Active Course Scopes](./docs/INDEXING_AND_SCOPES.md)** — Fast Area Re-index controls, background indexing, and cohort/date category detection.
 - **[AWS Setup, Sizing & FAQ](./docs/OPERATIONS_AND_TROUBLESHOOTING.md)** — AWS CloudFormation deployment, RAM sizing table, and administrator FAQ.
 - **[Release Notes](./CHANGELOG.md)** — Full version history.
@@ -32,6 +32,7 @@ A high-performance Moodle **global search** engine plugin that indexes your Mood
 - **100% Local Attached File & Caption Indexing:** Extracts and indexes text inside uploaded `.pdf`, `.docx`, `.pptx`, `.xlsx`, `.odt`, `.odp`, `.ods`, `.txt`, `.md`, `.csv`, `.tsv`, `.html`, `.xml`, `.vtt`, `.srt`, and `.json` files locally on your Moodle server.
 - **Role-Based User Search Privacy:** Optional indexing and display of user profile fields (`ID number`, `Email address`, `Department`, `Institution`, and custom profile fields) gated strictly by staff capabilities, with student user-profile search restricted by default.
 - **Native Video Time (`mod_videotime`) Auto-Detection:** Automatically adds a customizable Video Time filter button when `mod_videotime` is installed.
+- **Live Server Health & Resource Diagnostics:** Dedicated **Server Health** administration page (`health.php`) displaying real-time Typesense version, cluster/Raft leader status, HTTP latency, host memory/CPU/disk pressure thresholds, and per-collection schema/document counts.
 
 ---
 
