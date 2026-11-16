@@ -101,16 +101,23 @@ class client {
     }
 
     /**
-     * Perform a request and decode the JSON response, throwing on error.
+     * Perform a raw HTTP request against Typesense without throwing on HTTP error codes.
      *
      * @param string $method HTTP method (get/post/delete/put/patch).
      * @param string $path API path (leading slash).
      * @param mixed $body Request body (array is JSON-encoded, string sent raw).
      * @param array $query Query parameters for GET.
-     * @return mixed Decoded JSON (array) or raw string for NDJSON endpoints.
-     * @throws \moodle_exception
+     * @param int|null $timeout Optional request timeout override in seconds.
+     * @return array{http_code: int, body: string, error: string, latency_ms: float}
+     * @throws \moodle_exception On unsupported HTTP method.
      */
-    protected function request($method, $path, $body = null, array $query = []) {
+    protected function request_raw(
+        string $method,
+        string $path,
+        $body = null,
+        array $query = [],
+        ?int $timeout = null
+    ): array {
         $url = $this->base_url() . $path;
         $options = [];
         $data = null;
@@ -123,26 +130,79 @@ class client {
             }
         }
 
-        if ($method === 'get') {
-            $response = $this->curl->get($url, $query);
-        } else if ($method === 'post') {
-            $response = $this->curl->post($url, $data, $options);
-        } else if ($method === 'put') {
-            $response = $this->curl->put($url, $data, $options);
-        } else if ($method === 'patch') {
-            $response = $this->curl->patch($url, $data, $options);
-        } else if ($method === 'delete') {
-            $response = $this->curl->delete($url, $data, $options);
-        } else {
-            throw new \moodle_exception('typesense:unsupportedmethod', 'search_typesense', '', $method);
+        if ($timeout !== null) {
+            $this->curl->setopt(['CURLOPT_TIMEOUT' => $timeout]);
         }
 
+        $started = microtime(true);
+        try {
+            if ($method === 'get') {
+                $response = $this->curl->get($url, $query);
+            } else if ($method === 'post') {
+                $response = $this->curl->post($url, $data, $options);
+            } else if ($method === 'put') {
+                $response = $this->curl->put($url, $data, $options);
+            } else if ($method === 'patch') {
+                $response = $this->curl->patch($url, $data, $options);
+            } else if ($method === 'delete') {
+                $response = $this->curl->delete($url, $data, $options);
+            } else {
+                throw new \moodle_exception('typesense:unsupportedmethod', 'search_typesense', '', $method);
+            }
+        } finally {
+            if ($timeout !== null) {
+                $this->curl->setopt(['CURLOPT_TIMEOUT' => 30]);
+            }
+        }
+
+        $latencyms = round((microtime(true) - $started) * 1000, 1);
         $info = $this->curl->get_info();
         $httpcode = isset($info['http_code']) ? (int)$info['http_code'] : 0;
-        if ($httpcode >= 400) {
-            $this->throw_error($httpcode, $response);
+        $curlerror = '';
+        if ($httpcode === 0 && !empty($this->curl->error)) {
+            $curlerror = (string)$this->curl->error;
         }
-        return $response;
+
+        return [
+            'http_code' => $httpcode,
+            'body' => is_string($response) ? $response : '',
+            'error' => $curlerror,
+            'latency_ms' => $latencyms,
+        ];
+    }
+
+    /**
+     * Perform a request and return the raw response body, throwing on HTTP errors.
+     *
+     * @param string $method HTTP method (get/post/delete/put/patch).
+     * @param string $path API path (leading slash).
+     * @param mixed $body Request body (array is JSON-encoded, string sent raw).
+     * @param array $query Query parameters for GET.
+     * @return mixed Raw response string.
+     * @throws \moodle_exception
+     */
+    protected function request($method, $path, $body = null, array $query = []) {
+        $raw = $this->request_raw((string)$method, (string)$path, $body, $query);
+        if ($raw['http_code'] >= 400) {
+            $this->throw_error($raw['http_code'], $raw['body']);
+        }
+        return $raw['body'];
+    }
+
+    /**
+     * Extract an error message from a Typesense JSON error body.
+     *
+     * @param string $response Raw response body.
+     * @return string
+     */
+    protected function extract_error_message(string $response): string {
+        $message = $response;
+        if ($decoded = json_decode($response, true)) {
+            if (isset($decoded['error'])) {
+                $message = (string)$decoded['error'];
+            }
+        }
+        return trim($message);
     }
 
     /**
@@ -153,12 +213,7 @@ class client {
      * @throws \moodle_exception
      */
     protected function throw_error($httpcode, $response) {
-        $message = $response;
-        if ($decoded = json_decode($response, true)) {
-            if (isset($decoded['error'])) {
-                $message = $decoded['error'];
-            }
-        }
+        $message = $this->extract_error_message((string)$response);
         throw new \moodle_exception('typesense:servererror', 'search_typesense', '', $message, "HTTP $httpcode");
     }
 
@@ -168,13 +223,132 @@ class client {
      * @return bool
      */
     public function health() {
-        try {
-            $response = $this->request('get', '/health');
-            $decoded = json_decode($response, true);
-            return (isset($decoded['ok']) && $decoded['ok'] == 1);
-        } catch (\moodle_exception $e) {
-            return false;
+        $status = $this->get_health_status();
+        return !empty($status['ok']);
+    }
+
+    /**
+     * Query GET /health with full status, latency, and resource_error details.
+     *
+     * @return array{ok: bool, http_code: int, latency_ms: float, resource_error: string, error: string}
+     */
+    public function get_health_status(): array {
+        $raw = $this->request_raw('get', '/health', null, [], 5);
+        $decoded = json_decode($raw['body'], true);
+        $ok = is_array($decoded) && isset($decoded['ok']) && ($decoded['ok'] == 1 || $decoded['ok'] === true);
+        $resourceerror = '';
+        if (is_array($decoded) && !empty($decoded['resource_error'])) {
+            $resourceerror = (string)$decoded['resource_error'];
         }
+        $error = $raw['error'];
+        if ($error === '' && $raw['http_code'] >= 400 && $resourceerror === '') {
+            $error = $this->extract_error_message($raw['body']);
+        }
+        return [
+            'ok' => $raw['http_code'] >= 200 && $raw['http_code'] < 300 && $ok,
+            'http_code' => $raw['http_code'],
+            'latency_ms' => $raw['latency_ms'],
+            'resource_error' => $resourceerror,
+            'error' => $error,
+        ];
+    }
+
+    /**
+     * Fetch a read-only JSON diagnostics endpoint with graceful 401/403/404 classification.
+     *
+     * @param string $path API path (leading slash).
+     * @param int $timeout Request timeout in seconds.
+     * @return array{status: string, http_code: int, latency_ms: float, data: array, error: string}
+     */
+    protected function get_diagnostic_json(string $path, int $timeout = 5): array {
+        $raw = $this->request_raw('get', $path, null, [], $timeout);
+        $httpcode = $raw['http_code'];
+
+        if ($httpcode >= 200 && $httpcode < 300) {
+            $decoded = json_decode($raw['body'], true);
+            if (is_array($decoded)) {
+                return [
+                    'status' => 'ok',
+                    'http_code' => $httpcode,
+                    'latency_ms' => $raw['latency_ms'],
+                    'data' => $decoded,
+                    'error' => '',
+                ];
+            }
+            return [
+                'status' => 'error',
+                'http_code' => $httpcode,
+                'latency_ms' => $raw['latency_ms'],
+                'data' => [],
+                'error' => 'Invalid JSON response from Typesense.',
+            ];
+        }
+
+        if ($httpcode === 401 || $httpcode === 403) {
+            return [
+                'status' => 'restricted',
+                'http_code' => $httpcode,
+                'latency_ms' => $raw['latency_ms'],
+                'data' => [],
+                'error' => $this->extract_error_message($raw['body']),
+            ];
+        }
+
+        if ($httpcode === 404) {
+            return [
+                'status' => 'notfound',
+                'http_code' => $httpcode,
+                'latency_ms' => $raw['latency_ms'],
+                'data' => [],
+                'error' => $this->extract_error_message($raw['body']),
+            ];
+        }
+
+        $err = $raw['error'] !== '' ? $raw['error'] : $this->extract_error_message($raw['body']);
+        return [
+            'status' => 'error',
+            'http_code' => $httpcode,
+            'latency_ms' => $raw['latency_ms'],
+            'data' => [],
+            'error' => $err,
+        ];
+    }
+
+    /**
+     * Fetch node debug information (version and Raft cluster state) via GET /debug.
+     *
+     * @return array{status: string, http_code: int, latency_ms: float, data: array, error: string}
+     */
+    public function get_debug_info(): array {
+        return $this->get_diagnostic_json('/debug');
+    }
+
+    /**
+     * Fetch system and Typesense process metrics via GET /metrics.json.
+     *
+     * @return array{status: string, http_code: int, latency_ms: float, data: array, error: string}
+     */
+    public function get_metrics(): array {
+        return $this->get_diagnostic_json('/metrics.json');
+    }
+
+    /**
+     * Fetch recent 10-second API throughput and latency stats via GET /stats.json.
+     *
+     * @return array{status: string, http_code: int, latency_ms: float, data: array, error: string}
+     */
+    public function get_stats(): array {
+        return $this->get_diagnostic_json('/stats.json');
+    }
+
+    /**
+     * Fetch collection status and schema summary without throwing on 404/403.
+     *
+     * @param string $name Collection name.
+     * @return array{status: string, http_code: int, latency_ms: float, data: array, error: string}
+     */
+    public function get_collection_status(string $name): array {
+        return $this->get_diagnostic_json('/collections/' . rawurlencode($name));
     }
 
     /**

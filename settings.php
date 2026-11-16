@@ -107,6 +107,7 @@ if ($ADMIN->fulltree) {
     // 2. Search Performance, Course Scopes & Fast Re-index Launcher.
     $reindexurl = new moodle_url('/search/engine/typesense/reindex_areas.php');
     $inferurl = new moodle_url('/search/engine/typesense/infer_categories.php');
+    $healthurl = new moodle_url('/search/engine/typesense/health.php');
     $contentsettingsurl = new moodle_url('/admin/settings.php', ['section' => 'searchtypesense_content']);
     $scopetoolbtns = html_writer::div(
         html_writer::link(
@@ -116,6 +117,10 @@ if ($ADMIN->fulltree) {
         ) . html_writer::link(
             $inferurl,
             get_string('infercategories_button', 'search_typesense'),
+            ['class' => 'btn btn-outline-secondary btn-sm mt-2 mr-2 me-2']
+        ) . html_writer::link(
+            $healthurl,
+            get_string('nav_health', 'search_typesense'),
             ['class' => 'btn btn-outline-secondary btn-sm mt-2 mr-2 me-2']
         ) . html_writer::link(
             $contentsettingsurl,
@@ -310,6 +315,15 @@ if (isset($ADMIN) && $ADMIN->locate('searchplugins')) {
             'searchtypesense_infer',
             new lang_string('infercategories_nav', 'search_typesense'),
             new moodle_url('/search/engine/typesense/infer_categories.php'),
+            'moodle/site:config'
+        ));
+    }
+
+    if (!$ADMIN->locate('searchtypesense_health')) {
+        $ADMIN->add('search_typesense_category', new admin_externalpage(
+            'searchtypesense_health',
+            new lang_string('nav_health', 'search_typesense'),
+            new moodle_url('/search/engine/typesense/health.php'),
             'moodle/site:config'
         ));
     }

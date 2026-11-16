@@ -81,3 +81,55 @@
     height: 10px;
     max-width: 520px;
 }
+
+.search-typesense-health-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.search-typesense-health-card {
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    background-color: #fff;
+    padding: 1rem 1.125rem;
+}
+
+.search-typesense-health-card__label {
+    color: #6c757d;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.375rem;
+}
+
+.search-typesense-health-card__value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #212529;
+    line-height: 1.25;
+}
+
+.search-typesense-health-bar {
+    height: 8px;
+    border-radius: 999px;
+    background-color: #e9ecef;
+    overflow: hidden;
+    margin: 0.5rem 0 0.375rem;
+}
+
+.search-typesense-health-bar__fill {
+    height: 100%;
+    border-radius: 999px;
+    background-color: #198754;
+}
+
+.search-typesense-health-bar__fill--warning {
+    background-color: #fd7e14;
+}
+
+.search-typesense-health-bar__fill--danger {
+    background-color: #dc3545;
+}

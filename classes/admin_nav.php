@@ -36,7 +36,7 @@ class admin_nav {
     /**
      * Render the Typesense administration navigation tabs.
      *
-     * @param string $active Active tab key ('connection', 'content', 'reindex', 'infer', 'pro', 'analytics').
+     * @param string $active Active tab key ('connection', 'content', 'reindex', 'infer', 'health', 'pro', 'analytics').
      * @return string HTML markup.
      */
     public static function render(string $active): string {
@@ -56,6 +56,10 @@ class admin_nav {
             'infer' => [
                 'label' => get_string('nav_infer', 'search_typesense'),
                 'url' => new \moodle_url('/search/engine/typesense/infer_categories.php'),
+            ],
+            'health' => [
+                'label' => get_string('nav_health', 'search_typesense'),
+                'url' => new \moodle_url('/search/engine/typesense/health.php'),
             ],
         ];
 

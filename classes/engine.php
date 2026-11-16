@@ -115,6 +115,40 @@ class engine extends \core_search\engine {
     }
 
     /**
+     * Public accessor to build a Typesense client for diagnostics and health checks.
+     *
+     * @return client
+     * @throws \moodle_exception When the engine is not configured.
+     */
+    public function create_client(): client {
+        return $this->get_client();
+    }
+
+    /**
+     * Public accessor for the configured Typesense collection name.
+     *
+     * @return string
+     */
+    public function get_configured_collection_name(): string {
+        return (string)$this->get_collection_name();
+    }
+
+    /**
+     * Return the configured Typesense base URL (without API key) for display.
+     *
+     * @return string
+     */
+    public function get_endpoint_display(): string {
+        $protocol = (string)($this->get_engine_config('protocol') ?: 'https');
+        $host = (string)($this->get_engine_config('host') ?: '');
+        $port = (string)($this->get_engine_config('port') ?: '8108');
+        if ($host === '') {
+            return '';
+        }
+        return $protocol . '://' . $host . ':' . $port;
+    }
+
+    /**
      * Typesense schema for a Moodle search collection.
      *
      * The full Moodle document is stored (as JSON) in `docdata` so it can be

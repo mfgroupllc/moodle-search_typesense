@@ -8,8 +8,9 @@ A shared tab bar at the top of every page lets administrators switch between:
 2. **Content, Users & Integrations**
 3. **Fast Area Re-index (NDJSON)**
 4. **Active Course Categories**
-5. **Typesense Pro (AI & InstantSearch)** *(when Typesense Pro is installed)*
-6. **Search Analytics** *(when Typesense Pro is installed)*
+5. **Server Health**
+6. **Typesense Pro (AI & InstantSearch)** *(when Typesense Pro is installed)*
+7. **Search Analytics** *(when Typesense Pro is installed)*
 
 ---
 
@@ -70,3 +71,16 @@ When the **Video Time (`mod_videotime`)** activity plugin is installed on your M
 | **Show Video Time filter button** | Enabled | Displays a dedicated **Video Time** filter button on the search page and inside the InstantSearch dropdown. |
 | **Video Time button label** | `Video Time` | Customizes the button label (for example, `Video Library` or `Lecture Videos`). |
 - **Show matching Video Time activities near the top:** When enabled (the default), Video Time activities whose title matches the search appear after matching courses and before other content on the first page of results and in the Typesense Pro dropdown.
+
+---
+
+## 3. Server Health
+
+Navigate to **Site administration → Plugins → Search → Typesense → Server Health** for a live, read-only snapshot of your Typesense node and active Moodle collection:
+
+- **Node Health & Cluster Role:** Displays `GET /health` reachability, latency, any `OUT_OF_DISK` / `OUT_OF_MEMORY` `503` resource errors, plus the Typesense version and Raft role (`Leader` or `Follower`) from `GET /debug`.
+- **Active Collection:** Shows the configured collection name, indexed document count, schema field count, and creation timestamp.
+- **Host & Process Resources (`GET /metrics.json`):** Reports Host CPU %, Host Memory (RAM), Host Disk usage with warning/danger thresholds (75% / 90%), and Typesense allocator memory stats (`allocated`, `active`, `resident`, and fragmentation ratio).
+- **Live API Activity (`GET /stats.json`):** Shows total requests/sec, overloaded requests/sec, pending write batches, and per-endpoint throughput and latency over the last 10 seconds.
+
+> **Scoped / Multi-Tenant API Keys:** If your configured API key is restricted to a single collection rather than a full cluster admin key, `/health` and collection stats still work while `/debug`, `/metrics.json`, and `/stats.json` gracefully display an informational notice unless `debug:list`, `metrics.json:list`, and `stats.json:list` actions are granted on the key.
