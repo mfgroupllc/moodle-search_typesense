@@ -100,7 +100,7 @@ All notable updates to **Typesense Pro (`local_typesensepro`)** for Moodle are d
 - **Seamless AI Overview Generation on First Click:**
   - Clicking **"Generate AI Overview from these results"** now automatically registers the user's explicit AI policy acceptance in Moodle so the overview generates immediately without requiring the user to open a separate text editor modal first.
 - **Unified Admin Settings Navigation:**
-  - Integrated **Typesense Pro (AI & InstantSearch)** into the main **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense** category.
+  - Integrated **Typesense Pro (AI & InstantSearch)** into the main **Site administration → Plugins → Search → Typesense** category.
 
 ---
 

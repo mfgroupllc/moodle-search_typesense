@@ -24,9 +24,9 @@ Moodle requires each user to accept the site AI usage policy before any AI featu
 
 ### Connecting Your AI Provider in Moodle
 AI Overviews and AI Category Classification use Moodle's built-in AI subsystem:
-1. Navigate to **Site administration $\rightarrow$ General $\rightarrow$ AI $\rightarrow$ AI providers**.
+1. Navigate to **Site administration → General → AI → AI providers**.
 2. Enable and configure your preferred provider (**Google Gemini**, **OpenAI**, or **Microsoft Azure AI**) and ensure the **Generate text** action is enabled.
-3. Navigate to **Site administration $\rightarrow$ General $\rightarrow$ AI $\rightarrow$ AI placements** to ensure AI actions are enabled on your site.
+3. Navigate to **Site administration → General → AI → AI placements** to ensure AI actions are enabled on your site.
 
 ---
 
@@ -38,7 +38,7 @@ In addition to keyword and typo-tolerant matching, administrators can optionally
 On multi-year Moodle sites, generating vector embeddings for years of archived courses wastes AI tokens. By default, Typesense Pro restricts background embedding generation to **Current courses & system areas**, reducing embedding token usage by **85–90%**.
 
 ### How to Enable Hybrid Semantic Search
-Under **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense $\rightarrow$ Typesense Pro (AI & InstantSearch)**:
+Under **Site administration → Plugins → Search → Typesense → Typesense Pro (AI & InstantSearch)**:
 1. Check **Enable Hybrid Semantic Search (Vector + Keyword)**.
 2. Check **I consent to sending indexed document text and search queries to the configured Embedding API endpoint**.
 3. Enter your **Embedding API Endpoint** (default: `https://api.openai.com/v1/embeddings`), **Embedding API Key**, and **Embedding Model** (default: `text-embedding-3-small`).

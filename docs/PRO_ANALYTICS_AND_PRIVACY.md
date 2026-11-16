@@ -6,7 +6,7 @@
 
 ## 1. Search Analytics Dashboard
 
-Navigate to **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense $\rightarrow$ Search Analytics** to view search metrics across selectable time windows (**Last 7 days**, **Last 30 days**, or **Last 90 days**).
+Navigate to **Site administration → Plugins → Search → Typesense → Search Analytics** to view search metrics across selectable time windows (**Last 7 days**, **Last 30 days**, or **Last 90 days**).
 
 ### Summary Metrics
 - **Total Searches:** Total number of searches performed during the selected period.
@@ -26,7 +26,7 @@ Click **Export CSV** to download the aggregated search analytics report for spre
 
 ## 2. Log Retention & Automatic Cleanup
 
-Under **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense $\rightarrow$ Typesense Pro (AI & InstantSearch)**:
+Under **Site administration → Plugins → Search → Typesense → Typesense Pro (AI & InstantSearch)**:
 - **Enable search analytics logging:** Turns search telemetry logging on or off.
 - **Analytics retention period (days):** Controls how long search log entries are kept (default: **90 days**). A daily scheduled task automatically purges log records older than the configured retention period.
 

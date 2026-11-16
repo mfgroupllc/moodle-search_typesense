@@ -1,7 +1,7 @@
 # Administrator Settings Guide
 
 All Typesense settings and administration tools are grouped in one place under:
-**Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense**
+**Site administration → Plugins → Search → Typesense**
 
 A shared tab bar at the top of every page lets administrators switch between:
 1. **Connection & Scopes**

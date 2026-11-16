@@ -68,7 +68,7 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ### Added & Improved
 - **Hide Non-Enrollable Courses from Student Search Results (`search_typesense/restrictunenrolledcourses`):**
-  - Added a new administration setting under **Content, Users & Integrations $\rightarrow$ Hide non-enrollable courses from student search results** (enabled by default).
+  - Added a new administration setting under **Content, Users & Integrations → Hide non-enrollable courses from student search results** (enabled by default).
   - When enabled, students only see course results (`core_course-course`) for courses they are enrolled in, can already access (such as open guest or auto-enroll courses), or can actively self-enroll in. Historical and cohort-locked courses they cannot join are hidden from students while remaining searchable for staff, faculty, and managers.
 
 ---
@@ -108,7 +108,7 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ### Added & Improved
 - **Unified Admin Settings Category:**
-  - Grouped all Typesense administration pages under **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense**.
+  - Grouped all Typesense administration pages under **Site administration → Plugins → Search → Typesense**.
 - **Live AJAX Indexing Progress Bar:**
   - Replaced the 5-second page refresh on the **Fast Area Re-index** page with a smooth background AJAX progress bar that updates document counts and timestamps in place.
 - **Fixed Timestamp Formatting on Fast Area Re-index:**

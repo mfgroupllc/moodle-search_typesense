@@ -26,7 +26,7 @@ A high-performance Moodle **global search** engine plugin that indexes your Mood
 ## Key Features
 
 - **100% Moodle Permission Enforcement Without Timeouts:** Verifies Moodle course enrollments, activity visibility, separate groups, and role capabilities on search results while avoiding slow context pre-calculation timeouts on large multi-year sites.
-- **Course, Template & Student ID (`idnumber`) Top-Surfacing:** Automatically surfaces matching courses, course templates (`PA105-O`, `_points`, `PB101`), and—for authorized staff—student ID numbers (`9999` $\rightarrow$ `9999999998`) and user profiles at the top of search results.
+- **Course, Template & Student ID (`idnumber`) Top-Surfacing:** Automatically surfaces matching courses, course templates (`PA105-O`, `_points`, `PB101`), and—for authorized staff—student ID numbers (`9999` → `9999999998`) and user profiles at the top of search results.
 - **Active vs. Historical Course Scopes:** Includes a one-click **Active Course Categories** detection tool that analyzes course start/end dates, recent course edits, enrollment velocity, and cohort folder names (`2605`, `2607`, `FA26`) so users search current terms by default while historical archives stay one click away.
 - **Fast Area Re-index & Active-Course Forum Scoping:** Dedicated **Fast Area Re-index (NDJSON)** administration page with background task queueing, live AJAX progress updates, and automatic restriction of forum post indexing to active courses.
 - **100% Local Attached File & Caption Indexing:** Extracts and indexes text inside uploaded `.pdf`, `.docx`, `.pptx`, `.xlsx`, `.odt`, `.odp`, `.ods`, `.txt`, `.md`, `.csv`, `.tsv`, `.html`, `.xml`, `.vtt`, `.srt`, and `.json` files locally on your Moodle server.
@@ -38,12 +38,12 @@ A high-performance Moodle **global search** engine plugin that indexes your Mood
 ## External Service Requirement (Typesense Server)
 
 This plugin integrates with **Typesense** (an open-source search server licensed under GPLv3, or Typesense Cloud):
-- **What depends on it:** All global search indexing and search query execution when **Typesense** is selected as the active search engine in **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Manage global search**.
+- **What depends on it:** All global search indexing and search query execution when **Typesense** is selected as the active search engine in **Site administration → Plugins → Search → Manage global search**.
 - **How to obtain and configure Typesense credentials:**
   1. **Option A — Self-Hosted on AWS (3-Minute CloudFormation Stack):** Deploy [`aws/typesense.yaml`](./aws/typesense.yaml) (see [`aws/README.md`](./aws/README.md)) to launch an Amazon Linux 2023 EC2 instance running Typesense with port `8108` restricted to your Moodle web security group.
   2. **Option B — Self-Hosted Linux Binary:** Download the official binary from [typesense.org/downloads](https://typesense.org/downloads/).
   3. **Option C — Typesense Cloud:** Create a cluster at [cloud.typesense.org](https://cloud.typesense.org) and generate an Admin API Key.
-  4. Enter the **Typesense URL**, **Port (`8108`)**, and **API key** under **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense $\rightarrow$ Connection & Scopes**.
+  4. Enter the **Typesense URL**, **Port (`8108`)**, and **API key** under **Site administration → Plugins → Search → Typesense → Connection & Scopes**.
 
 ---
 

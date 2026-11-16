@@ -51,7 +51,7 @@ Clicking any example chip runs the search immediately so learners and faculty ca
 
 ## 5. Administrator Settings for InstantSearch & Discovery
 
-Configure these options under **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense $\rightarrow$ Typesense Pro (AI & InstantSearch)**:
+Configure these options under **Site administration → Plugins → Search → Typesense → Typesense Pro (AI & InstantSearch)**:
 
 | Setting | Default | Description |
 | :--- | :--- | :--- |

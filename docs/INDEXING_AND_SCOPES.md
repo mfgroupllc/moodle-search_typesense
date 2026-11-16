@@ -6,7 +6,7 @@ This guide explains how to manage search indexing and configure active course sc
 
 ## 1. Fast Area Re-index (NDJSON)
 
-Navigate to **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense $\rightarrow$ Fast Area Re-index (NDJSON)** to view live index statistics and run high-speed indexing per search area.
+Navigate to **Site administration → Plugins → Search → Typesense → Fast Area Re-index (NDJSON)** to view live index statistics and run high-speed indexing per search area.
 
 ### What You See on This Page
 - **Total Documents in Collection:** Displays the live total number of documents currently stored in your Typesense collection.
@@ -28,7 +28,7 @@ If some Moodle context records have missing paths, a warning banner (**Unbuilt C
 
 ## 2. Active Course Categories & Automatic Date Filtering
 
-Navigate to **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense $\rightarrow$ Active Course Categories** to configure which categories belong to the **Current courses** scope.
+Navigate to **Site administration → Plugins → Search → Typesense → Active Course Categories** to configure which categories belong to the **Current courses** scope.
 
 ### One-Click Active Category Detection
 Click **Detect / Re-check Active Categories** to scan your course catalog and pre-select active categories automatically. The detection tool evaluates:

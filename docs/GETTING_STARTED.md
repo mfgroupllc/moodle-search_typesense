@@ -37,19 +37,19 @@ Create a managed cluster at [cloud.typesense.org](https://cloud.typesense.org) a
 ## Step 2: Install the Moodle Plugin(s)
 
 1. **Install Typesense Search (`search_typesense`):**
-   - Upload the plugin ZIP at **Site administration $\rightarrow$ Plugins $\rightarrow$ Install plugins**, or extract it into `search/engine/typesense/` in your Moodle directory.
+   - Upload the plugin ZIP at **Site administration → Plugins → Install plugins**, or extract it into `search/engine/typesense/` in your Moodle directory.
 2. **Install Typesense Pro (`local_typesensepro` — Optional Add-On for Moodle 4.5+):**
    - Upload the plugin ZIP or extract it into `local/typesensepro/`.
 3. **Complete the Moodle Upgrade:**
-   - Visit **Site administration $\rightarrow$ Notifications** in your browser (or run `php admin/cli/upgrade.php --non-interactive` via CLI).
+   - Visit **Site administration → Notifications** in your browser (or run `php admin/cli/upgrade.php --non-interactive` via CLI).
 
 ---
 
 ## Step 3: Connect Moodle to Typesense
 
-1. Go to **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense $\rightarrow$ Connection & Scopes**.
+1. Go to **Site administration → Plugins → Search → Typesense → Connection & Scopes**.
 2. Enter your **Typesense URL**, **Port** (`8108` for self-hosted, `443` for Typesense Cloud), **API key**, and **Collection name** (default: `moodle`), then click **Save changes**.
-3. Go to **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Manage global search**:
+3. Go to **Site administration → Plugins → Search → Manage global search**:
    - Enable **Global search**.
    - Select **Typesense** as the active search engine.
 
@@ -59,7 +59,7 @@ Create a managed cluster at [cloud.typesense.org](https://cloud.typesense.org) a
 
 On multi-year Moodle sites, configuring active course categories keeps everyday search focused on current courses while keeping past cohorts accessible under *Historical / other courses*:
 
-1. Go to **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense $\rightarrow$ Active Course Categories**.
+1. Go to **Site administration → Plugins → Search → Typesense → Active Course Categories**.
 2. Click **Detect / Re-check Active Categories**.
    - The tool reviews course start/end dates, recent course edits, recent student enrollments, and cohort folder names (such as `2605`, `2607`, `FA26`), automatically excluding completed cohort folders and expired courses.
 3. Review the recommended categories and click **Apply selected categories to Current courses**.
@@ -68,7 +68,7 @@ On multi-year Moodle sites, configuring active course categories keeps everyday 
 
 ## Step 5: Build Your Search Index
 
-1. Go to **Site administration $\rightarrow$ Plugins $\rightarrow$ Search $\rightarrow$ Typesense $\rightarrow$ Fast Area Re-index (NDJSON)**.
+1. Go to **Site administration → Plugins → Search → Typesense → Fast Area Re-index (NDJSON)**.
 2. If an **Unbuilt Context Paths Detected** notice appears at the top of the page, click **Repair missing context paths** first.
 3. Click **Run all areas in Background**.
    - Moodle's background task runner will index all enabled search areas while an animated progress bar updates document counts in real time on the page.
