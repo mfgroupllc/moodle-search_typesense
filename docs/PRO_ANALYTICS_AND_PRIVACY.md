@@ -19,6 +19,9 @@ Navigate to **Site administration → Plugins → Search → Typesense → Searc
 2. **Top Historical Spillover Queries:** Highlights terms where users searched in **Current courses** for content located in archived cohorts.
 3. **Top Searches Overall:** Lists the most frequent search queries along with search count, average result count, and average response time.
 
+### Fixing Zero-Result Searches with Synonyms
+Click **Search synonyms** in the dashboard toolbar to turn zero-result searches into synonym rules, for example a one-way rule so that a misspelling such as `recieve` also finds `receive`. Rules can be suggested from recent zero-result searches through Moodle's AI subsystem and approved one by one, or added by hand. See [Search Synonyms from Zero-Result Searches](./PRO_AI_AND_HYBRID.md#_5-search-synonyms-from-zero-result-searches).
+
 ### CSV Report Export
 Click **Export CSV** to download the aggregated search analytics report for spreadsheet analysis. All exported text is automatically sanitized against spreadsheet formula injection so files open safely in Microsoft Excel and Google Sheets.
 
@@ -37,5 +40,6 @@ Under **Site administration → Plugins → Search → Typesense → Typesense P
 Both **Typesense Search (`search_typesense`)** and **Typesense Pro (`local_typesensepro`)** implement Moodle's Privacy API (`Site administration -> Users -> Privacy and policies -> Plugin privacy registry`):
 
 - **Subject Data Export & Deletion:** Search analytics logs associated with a user are fully exported and deleted when processing Moodle GDPR data requests.
+- **Synonym Suggestions:** Only when an administrator presses **Suggest** on the **Search synonyms** page, the text of recent zero-result searches (without any user details) and the names of visible courses are sent through Moodle's configured AI provider. Synonym rules contain no personal data.
 - **Local Document Extraction:** Attached files (`.pdf`, `.docx`, `.pptx`, `.xlsx`, `.vtt`) are extracted locally on your Moodle server and indexed directly into your configured Typesense server.
 - **No Vendor Telemetry:** No search queries, documents, or analytics data are ever transmitted to Chris Murad Consulting, LLC.

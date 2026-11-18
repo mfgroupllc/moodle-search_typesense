@@ -10,7 +10,7 @@ A shared tab bar at the top of every page lets administrators switch between:
 4. **Active Course Categories**
 5. **Server Health**
 6. **Typesense Pro (AI & InstantSearch)** *(when Typesense Pro is installed)*
-7. **Search Analytics** *(when Typesense Pro is installed)*
+7. **Search Analytics** *(when Typesense Pro is installed)*, with a link to **Search synonyms** for turning zero-result searches into synonym rules
 
 ---
 

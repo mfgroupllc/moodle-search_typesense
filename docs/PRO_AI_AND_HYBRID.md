@@ -1,6 +1,6 @@
 # AI Overviews, Hybrid Search & Smart Classification (`Typesense Pro`)
 
-**Typesense Pro (`local_typesensepro`)** integrates with Moodle's native AI subsystem (`Site administration -> General -> AI`) to provide permission-safe cited AI Overviews, AI-assisted active category classification, hybrid semantic search, and smart message noise filtering.
+**Typesense Pro (`local_typesensepro`)** integrates with Moodle's native AI subsystem (`Site administration -> General -> AI`) to provide permission-safe cited AI Overviews, AI-assisted active category classification, hybrid semantic search, search synonyms suggested from zero-result searches, and smart message noise filtering.
 
 ---
 
@@ -67,3 +67,30 @@ When **Enable Smart Message Noise & Broadcast Filtering** is enabled (default), 
 - **Trivial 1–2 Word Replies:** Skips messages shorter than the minimum character threshold (default: **20 characters**).
 - **Automated System Notifications:** Skips `"Do not reply to this email"` and automated course/assignment notification boilerplate.
 - **Mass Broadcast Fan-Out:** Caps duplicate copies of identical mass announcements sent by an instructor to large cohorts (default: **25 copies**).
+
+---
+
+## 5. Search Synonyms from Zero-Result Searches
+
+Synonym rules let a search for one term also find content that uses another, so misspellings and different word forms still return results. Rules are stored in Moodle and synced to Typesense as one synonym set per collection, which Typesense applies on every search (full results page, InstantSearch, course, video and user passes) with no extra time per query.
+
+Open **Site administration → Reports → Search synonyms**, or **Search synonyms** on the Search Analytics dashboard.
+
+### Rule Types
+- **One-way (misspellings):** A search for the misspelling (for example `recieve`) also finds the correct terms (`receive`), but a search for the correct term is not affected.
+- **Equivalent:** All terms find each other (for example `colour` and `color`).
+
+### Suggestions from Zero-Result Searches (Optional)
+- An administrator presses **Suggest from the last 7 / 30 / 90 days**. Nothing runs in the background.
+- Typesense Pro sends the text of recent zero-result searches (no user details) and the names of visible courses to Moodle's AI subsystem (**Generate text**). Course codes, ids and internal tokens are left out.
+- Search text and course names are passed as delimited untrusted data so they cannot change the instructions.
+- Suggested terms that match no content on the site are dropped. Suggestions are only accepted for the searches that were sent.
+- Every suggestion waits for approval. Approving, disabling or deleting an active rule syncs the set to Typesense straight away. Rejected suggestions are kept so they are not suggested again.
+- The site AI usage policy must be accepted first. If it has not been, the page shows the policy with **Accept and continue** and **Decline** buttons, and acceptance is recorded by Moodle's AI subsystem only when the administrator presses accept.
+- Rules can always be added by hand without any AI provider.
+
+### Requirements
+- Typesense 30 or later (synonym sets).
+- The synonym set is named after the collection (`typesensepro_<collection>`), so sites sharing a Typesense server keep separate rules.
+- If the collection is rebuilt, the page shows that the server is out of sync; press **Sync to Typesense**.
+- Uninstalling the plugin detaches and deletes the synonym set.

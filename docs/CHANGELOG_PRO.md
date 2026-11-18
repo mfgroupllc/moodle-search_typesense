@@ -4,6 +4,19 @@ All notable updates to **Typesense Pro (`local_typesensepro`)** for Moodle are d
 
 ---
 
+## [1.1.12] - 2026-11-18
+
+### Added
+- **Search Synonyms (`synonyms.php`, `\local_typesensepro\synonym_manager`, `\local_typesensepro\synonym_client`):**
+  - New **Search synonyms** page under **Site administration → Reports** (also linked from the Search Analytics dashboard) for one-way rules (misspellings) and equivalent terms.
+  - **Suggest from the last 7 / 30 / 90 days** sends recent zero-result search text (no user details) and visible course names to Moodle's AI subsystem as delimited untrusted data. Course codes and ids are skipped, suggested terms that match no indexed content are dropped, and every suggestion waits for approval.
+  - Shows the site AI usage policy with **Accept and continue** and **Decline** when the administrator has not accepted it yet.
+  - Approved rules are synced to a Typesense 30+ synonym set named after the collection and attached to it, so they apply to every search. The set is never deleted while attached (Typesense fails searches on a collection that references a missing set); uninstalling detaches and then deletes it.
+  - Rules are stored in the new `{local_typesensepro_synonym}` table, which holds no personal data.
+- **Privacy:** The AI provider and core_ai privacy metadata now describe synonym suggestions.
+
+---
+
 ## [1.1.11] - 2026-11-13
 
 ### Changed
