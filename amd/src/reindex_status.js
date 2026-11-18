@@ -23,13 +23,37 @@
 
 import Ajax from 'core/ajax';
 
+/** @var {number} Poll interval while a re-index is running, in milliseconds. */
+const ACTIVE_DELAY = 2500;
+
+/** @var {number} First poll interval while nothing is running, in milliseconds. */
+const IDLE_DELAY = 8000;
+
+/** @var {number} Longest poll interval while nothing is running, in milliseconds. */
+const MAX_IDLE_DELAY = 60000;
+
 /**
  * Initialize background re-index status polling.
+ *
+ * Polling pauses while the page is hidden (another tab, minimised window) and slows down while no re-index is
+ * running, so a page left open does not keep calling the server.
  *
  * @param {boolean} initialActive Whether a background re-index task is initially active.
  */
 export const init = (initialActive) => {
+    let timer = null;
+    let idleDelay = IDLE_DELAY;
+
+    const schedule = (delay) => {
+        clearTimeout(timer);
+        timer = null;
+        if (!document.hidden) {
+            timer = setTimeout(pollStatus, delay);
+        }
+    };
+
     const pollStatus = () => {
+        timer = null;
         Ajax.call([{
             methodname: 'search_typesense_get_reindex_status',
             args: {},
@@ -84,12 +108,29 @@ export const init = (initialActive) => {
                     }
                 });
             }
-            setTimeout(pollStatus, data.active ? 2500 : 8000);
+            if (data.active) {
+                idleDelay = IDLE_DELAY;
+                schedule(ACTIVE_DELAY);
+            } else {
+                schedule(idleDelay);
+                idleDelay = Math.min(idleDelay * 2, MAX_IDLE_DELAY);
+            }
             return;
         }).catch(() => {
-            setTimeout(pollStatus, 6000);
+            schedule(Math.max(idleDelay, IDLE_DELAY));
         });
     };
 
-    setTimeout(pollStatus, initialActive ? 2500 : 6000);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            clearTimeout(timer);
+            timer = null;
+        } else if (timer === null) {
+            // Refresh straight away when the page is shown again.
+            idleDelay = IDLE_DELAY;
+            schedule(0);
+        }
+    });
+
+    schedule(initialActive ? ACTIVE_DELAY : IDLE_DELAY);
 };

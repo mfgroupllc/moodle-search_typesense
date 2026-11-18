@@ -531,6 +531,32 @@ class client {
     }
 
     /**
+     * Run several searches of one collection as a single union search (Typesense 28+).
+     *
+     * Typesense merges the hits by relevance and pages the merged list; the page and per_page of a union search are
+     * read from the query string, not from the individual searches.
+     *
+     * @param string $collection Collection name.
+     * @param array[] $searches Search parameters for each search, without page and per_page.
+     * @param int $page Page of the merged results.
+     * @param int $perpage Hits per page of the merged results.
+     * @return array Merged result with hits and found.
+     * @throws \moodle_exception On an HTTP error, including servers without union search.
+     */
+    public function union_search(string $collection, array $searches, int $page, int $perpage): array {
+        $body = [
+            'union' => true,
+            'searches' => array_map(static function (array $search) use ($collection): array {
+                return array_merge(['collection' => $collection], $search);
+            }, $searches),
+        ];
+        // Moodle sets arg_separator.output to &amp;, so the separator is given explicitly.
+        $path = '/multi_search?' . http_build_query(['page' => max(1, $page), 'per_page' => max(1, $perpage)], '', '&');
+        $decoded = json_decode($this->request('post', $path, $body), true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
      * Search a collection.
      *
      * @param string $collection

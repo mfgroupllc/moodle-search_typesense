@@ -54,6 +54,9 @@ class candidate_engine extends engine {
     /** @var access_manager Access calculations cached only for this request. */
     protected $accessmanager;
 
+    /** @var bool|null Whether the Typesense server accepts union searches (Typesense 28+); null until tried. */
+    protected static $unionsupported = null;
+
     /**
      * Whether this engine supports filtering by group IDs.
      *
@@ -173,7 +176,7 @@ class candidate_engine extends engine {
                 break;
             }
             $params['page'] = $backendpage++;
-            $response = $client->search($collection, $params);
+            $response = $this->backend_search($params);
             // The /multi_search endpoint can return HTTP 200 with an error inside results[0].
             if (isset($response['error']) || (isset($response['code']) && (int)$response['code'] >= 400)) {
                 throw new \moodle_exception(
@@ -287,12 +290,9 @@ class candidate_engine extends engine {
             'areaid:[' . implode(',', $quoted) . ']',
             '(owneruserid:0 || owneruserid:' . (int)$USER->id . ')',
         ];
-        if ($scope !== null) {
-            $clauses[] = 'courseid:[' . implode(',', $scope) . ']';
-        }
-        $accessibleclause = $this->accessible_clause($filters);
-        if ($accessibleclause !== '') {
-            $clauses[] = $accessibleclause;
+        $courseclause = $this->course_clause($scope, $filters);
+        if ($courseclause !== '') {
+            $clauses[] = $courseclause;
         }
         foreach (['contextids' => 'contextid', 'userids' => 'userid', 'groupids' => 'groupid'] as $key => $field) {
             if (!empty($filters->{$key})) {
@@ -354,6 +354,91 @@ class candidate_engine extends engine {
     }
 
     /**
+     * Build one backend clause for the course restriction: the scope and the accessible courses, intersected.
+     *
+     * Sending the intersection instead of two courseid lists returns the same documents, and lets Typesense skip
+     * courses the user cannot open (a large Current courses scope can hold hundreds of courses).
+     *
+     * @param array|null $scope Resolved course restriction, or null for none.
+     * @param \stdClass $filters Search filters, carrying candidatecourseids when narrowing applies.
+     * @return string Filter clause, or an empty string when there is no course restriction.
+     */
+    protected function course_clause(?array $scope, \stdClass $filters): string {
+        $accessible = isset($filters->candidatecourseids) && is_array($filters->candidatecourseids)
+            ? access_manager::normalise_ids($filters->candidatecourseids)
+            : null;
+        if ($scope === null && $accessible === null) {
+            return '';
+        }
+        $ids = $scope === null ? $accessible : access_manager::normalise_ids($scope);
+        if ($scope !== null && $accessible !== null) {
+            $ids = array_values(array_intersect($ids, $accessible));
+        }
+        return 'courseid:[' . ($ids ? implode(',', $ids) : '-1') . ']';
+    }
+
+    /**
+     * Run a candidate search, splitting the site course into its own search when it is mixed with other courses.
+     *
+     * The site course holds every user profile and message, so a filter that combines it with other courses is
+     * several times slower than searching the two parts separately. The parts are merged by Typesense's union
+     * search (Typesense 28+), which keeps the ranking and paging of a single search. Older servers get the
+     * single search.
+     *
+     * @param array $params Typesense search parameters.
+     * @return array Typesense search result.
+     */
+    protected function backend_search(array $params): array {
+        $client = $this->get_client();
+        $collection = $this->get_collection_name();
+        $searches = static::$unionsupported === false ? [] : $this->split_site_course($params);
+        if ($searches) {
+            try {
+                $response = $client->union_search(
+                    $collection,
+                    $searches,
+                    (int)($params['page'] ?? 1),
+                    (int)($params['per_page'] ?? static::BATCH_SIZE)
+                );
+                if (isset($response['hits'], $response['found'])) {
+                    static::$unionsupported = true;
+                    return $response;
+                }
+            } catch (\moodle_exception $e) {
+                debugging('Typesense union search unavailable: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            }
+            static::$unionsupported = false;
+        }
+        return $client->search($collection, $params);
+    }
+
+    /**
+     * Split a search whose course clause mixes the site course with other courses into two searches.
+     *
+     * @param array $params Typesense search parameters.
+     * @return array[] The two searches (without paging), or an empty array when no split is needed.
+     */
+    protected function split_site_course(array $params): array {
+        $filter = (string)($params['filter_by'] ?? '');
+        if (!preg_match('/courseid:\[([0-9,]+)\]/', $filter, $match)) {
+            return [];
+        }
+        $ids = array_map('intval', explode(',', $match[1]));
+        if (count($ids) < 2 || !in_array((int)SITEID, $ids, true)) {
+            return [];
+        }
+        $others = array_values(array_diff($ids, [(int)SITEID]));
+        $searches = [];
+        foreach (['courseid:[' . implode(',', $others) . ']', 'courseid:' . (int)SITEID] as $clause) {
+            $search = $params;
+            unset($search['page'], $search['per_page']);
+            $search['filter_by'] = str_replace($match[0], $clause, $filter);
+            $searches[] = $search;
+        }
+        return $searches;
+    }
+
+    /**
      * Return the Video Time search areas whose title matches are surfaced near the top of results.
      *
      * @param string[] $areas Enabled/requested areas.
@@ -400,12 +485,9 @@ class candidate_engine extends engine {
             'areaid:[' . implode(',', $quoted) . ']',
             '(owneruserid:0 || owneruserid:' . (int)$USER->id . ')',
         ];
-        if ($scope !== null) {
-            $clauses[] = 'courseid:[' . implode(',', $scope) . ']';
-        }
-        $accessibleclause = $this->accessible_clause($filters);
-        if ($accessibleclause !== '') {
-            $clauses[] = $accessibleclause;
+        $courseclause = $this->course_clause($scope, $filters);
+        if ($courseclause !== '') {
+            $clauses[] = $courseclause;
         }
         if (!empty($filters->timestart)) {
             $clauses[] = 'modified:>=' . (int)$filters->timestart;
@@ -427,7 +509,7 @@ class candidate_engine extends engine {
             'filter_by' => implode(' && ', $clauses),
         ];
         try {
-            $response = $this->get_client()->search($this->get_collection_name(), $params);
+            $response = $this->backend_search($params);
         } catch (\Throwable $e) {
             return [];
         }

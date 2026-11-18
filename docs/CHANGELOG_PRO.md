@@ -4,6 +4,20 @@ All notable updates to **Typesense Pro (`local_typesensepro`)** for Moodle are d
 
 ---
 
+## [1.1.13] - 2026-11-18
+
+### Added
+- **InstantSearch Analytics (`\local_typesensepro\analytics_logger`, `\local_typesensepro\external\instant_search`):**
+  - Searches made in the InstantSearch dropdown are now logged alongside full results page searches, in a new `source` column (`page` or `instant`). While a user keeps typing one query, the dropdown updates that query's row instead of adding one per keystroke, and the historical course lookup is skipped for dropdown searches.
+  - The **Search analytics** dashboard has a **Search results page / InstantSearch dropdown / All searches** switch (default: results page, so existing figures do not change) and shows the number of searches from each source. The CSV export follows the selected source.
+  - The privacy provider declares and exports the new `source` field.
+
+### Changed
+- **Faster InstantSearch (`\local_typesensepro\instant_engine`):**
+  - With Typesense Search 1.1.17 or later, the dropdown sends one intersected course list instead of the scope and accessible-course lists separately, which is much faster for large scopes. Older Typesense Search versions keep the previous behaviour.
+
+---
+
 ## [1.1.12] - 2026-11-18
 
 ### Added

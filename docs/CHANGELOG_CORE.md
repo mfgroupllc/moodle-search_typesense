@@ -4,6 +4,22 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.17] - 2026-11-18
+
+### Changed
+- **Faster Scoped Searches (`\search_typesense\candidate_engine`, `\search_typesense\client`):**
+  - The course restriction is now sent to Typesense as one sorted list: the scope (for example **Current courses**) intersected with the courses the user can open, instead of two separate lists. Results are unchanged.
+  - When the course list mixes the site course (which holds every user profile and message) with other courses, the two parts are searched separately and merged by Typesense's union search, which keeps the ranking and paging of a single search. Servers older than Typesense 28 get the single search as before.
+  - On a production site with a 787-course **Current courses** scope, a search went from about 1.6–2.6 seconds to 0.3–0.7 seconds with identical results. Searches that previously ran out of the time budget and showed no results now return them.
+  - Added `\search_typesense\client::union_search()` and `candidate_engine::course_clause()`, which Typesense Pro's InstantSearch also uses.
+- **Re-index Status Polling (`amd/src/reindex_status.js`):**
+  - The **Fast Area Re-index** page stops checking the background re-index status while the browser tab is hidden and slows down to once a minute while no re-index is running, so a page left open no longer calls the server every few seconds.
+
+### Fixed
+- Added the missing file-level PHPDoc block in `tests/server_health_test.php`.
+
+---
+
 ## [1.1.16] - 2026-11-16
 
 ### Added

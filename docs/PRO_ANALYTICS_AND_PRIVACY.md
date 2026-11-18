@@ -8,6 +8,9 @@
 
 Navigate to **Site administration → Plugins → Search → Typesense → Search Analytics** to view search metrics across selectable time windows (**Last 7 days**, **Last 30 days**, or **Last 90 days**).
 
+### Results Page and InstantSearch
+Use the **Search results page / InstantSearch dropdown / All searches** switch to report on searches from the full results page, from the InstantSearch dropdown, or both. The dashboard opens on the results page. While a user keeps typing one query in the dropdown, it is logged once, not once per keystroke.
+
 ### Summary Metrics
 - **Total Searches:** Total number of searches performed during the selected period.
 - **Average & p95 Latency (`ms`):** Average and 95th-percentile search response time in milliseconds.

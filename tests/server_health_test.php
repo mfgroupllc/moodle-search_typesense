@@ -14,13 +14,21 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+/**
+ * Tests for server health diagnostics.
+ *
+ * @package    search_typesense
+ * @copyright  2026 Christopher Murad <chrismurad@mfgrpllc.com>
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
 namespace search_typesense;
 
 /**
  * Unit tests for server health diagnostics and response normalization.
  *
  * @package    search_typesense
- * @copyright  2026 Christian Murad <chrismurad@mfgrpllc.com>
+ * @copyright  2026 Christopher Murad <chrismurad@mfgrpllc.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \search_typesense\server_health
  * @covers     \search_typesense\client
