@@ -26,6 +26,8 @@ aws cloudformation deploy \
 
 This launches an Amazon Linux 2023 EC2 instance with encrypted storage, configures TLS automatically, and restricts port `8108` exclusively to your Moodle web servers.
 
+> **Typesense version:** Typesense Search works with Typesense 27 and later. Typesense 28 or later lets scoped searches that include the site course (user profiles and messages) run as two smaller searches merged by Typesense, which is several times faster; older servers fall back automatically. Typesense Pro's **Search synonyms** need Typesense 30 or later. Set `TypesenseVersion` (for example `30.2`) when deploying, and check the installed version on the **Server Health** page.
+
 ### Option B: Self-Hosted Linux Server
 Download the official binary or package from [typesense.org/downloads](https://typesense.org/downloads/) and start the service with a data directory and API key.
 

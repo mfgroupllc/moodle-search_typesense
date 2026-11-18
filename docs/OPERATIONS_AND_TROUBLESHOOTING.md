@@ -21,6 +21,8 @@ aws cloudformation deploy \
     TypesenseVersion=27.1
 ```
 
+Use Typesense 28 or later for the fastest scoped searches, and 30 or later if you use Typesense Pro's **Search synonyms**. See [Getting Started](./GETTING_STARTED.md).
+
 ### Security Highlights
 - **Private VPC Only:** TCP port `8108` is restricted in the EC2 Security Group exclusively to your Moodle web server security group (`MoodleSecurityGroupId`). Your Typesense server is never exposed to the public internet.
 - **Built-In TLS:** Automatically generates a 10-year TLS certificate bound to your instance's private IP address.
@@ -58,3 +60,6 @@ No. All indexing, status polling, category detection, and search pages release y
 
 ### What happens if the Typesense server is temporarily offline or rebooting?
 Moodle uses a fast 2-second connection timeout when contacting Typesense. If the Typesense server is unreachable, Moodle administration pages remain responsive and display a clear connection status message on the **Manage global search** page.
+
+### Why does an admin page show "Section error!" right after upgrading?
+On a site with several web servers that share one Moodle cache (for example Redis or Valkey), servers still running the old plugin version can write the old plugin list into the shared cache while new servers are coming up. A server that reads it believes the plugin is older than the database and skips its settings pages. Once every server runs the new version, purge Moodle's caches (**Site administration → Development → Purge caches**, or `php admin/cli/purge_caches.php`).

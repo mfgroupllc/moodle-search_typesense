@@ -61,3 +61,5 @@ Configure these options under **Site administration → Plugins → Search → T
 | **Show AI Overview button in InstantSearch** | Enabled | Displays a 1-click **✨ AI Overview** link in the dropdown footer when AI Overviews are enabled. |
 | **Show search latency badge** | Disabled | Optional millisecond timing badge (`e.g., 28 ms`) in the dropdown header for administrators testing performance. |
 | **Show Guided Discovery cards on empty search page** | Enabled | Displays clickable example search cards when a user opens the Global Search page before typing a query. |
+
+When **Enable search analytics logging** is on, dropdown searches are recorded in the Search analytics log with the source **InstantSearch dropdown**. While a user keeps typing one query, the dropdown updates that query's entry instead of adding one per keystroke. See [Search Analytics, Zero-Result Insights & Privacy](./PRO_ANALYTICS_AND_PRIVACY.md).

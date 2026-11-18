@@ -52,3 +52,5 @@ To prevent years of archived courses from cluttering daily searches, the search 
 | **Historical / other courses** | Searches past cohorts and archived courses when faculty or staff need to reference prior terms. |
 | **Search everything** | Searches across all accessible courses (both current and historical) as well as site-wide areas and user profiles. |
 | **Video Time** *(when installed)* | Automatically appears when the `mod_videotime` plugin is installed, filtering results exclusively to Video Time activities and video transcripts. |
+
+Each search sends Typesense a single course list: the scope above intersected with the courses the user can open. The site course, which holds all user profiles and messages, is searched separately and merged by Typesense's union search (Typesense 28+), because combining it with hundreds of other courses in one filter is several times slower. Moodle's own access checks still run on every result.

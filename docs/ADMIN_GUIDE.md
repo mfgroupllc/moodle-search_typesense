@@ -43,6 +43,11 @@ On large sites most matches for a common word sit in courses a given student can
 
 Matching course titles are still looked up across the whole site, the Courses tab is not narrowed, Moodle's access checks still run on every result, and administrators, staff with site-wide course access, and users with a role in a course category are never narrowed. **Reuse a user's course list for** controls how long the list is cached (5 minutes by default); a new enrollment can take that long to appear in search. If content in an open course is missing for non-enrolled users, add that course's enrollment method to the list.
 
+Typesense receives one course list per search: the selected scope intersected with the courses the user can open. When that list includes the site course, which holds every user profile and message, the site course is searched separately and the two result sets are merged by Typesense (Typesense 28 or later), so a large **Current courses** scope stays fast for staff too. Results are the same either way.
+
+### Fast Area Re-index Status
+While the **Fast Area Re-index** page is open it checks the background re-index status every few seconds during a re-index. When nothing is running it slows down to once a minute, and it stops checking while the browser tab is hidden, so leaving the page open does not keep calling the server.
+
 ## 2. Content, Users & Integrations
 
 ### Attached Document & File Content Indexing
