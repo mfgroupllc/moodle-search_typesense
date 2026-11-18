@@ -4,6 +4,16 @@ All notable updates to **Typesense Pro (`local_typesensepro`)** for Moodle are d
 
 ---
 
+## [1.1.14] - 2026-11-18
+
+### Fixed
+- **Search Synonyms (`\local_typesensepro\synonym_manager`):**
+  - AI-suggested equivalent-term rules are no longer dropped. The words from the failed search always match nothing, so filtering out terms without matches removed them and left a single-term rule that failed validation. Terms taken word for word from the failed search are now kept; other terms still need at least one match.
+  - The suggestion list is read from the first complete JSON array in the AI response, so bracketed text such as `[1]` or `[note]` around it no longer makes the whole response fail with "The AI provider did not return any suggestions".
+  - Searches that stopped early on the scan or time budget are no longer treated as zero-result searches when picking what to send for suggestions.
+
+---
+
 ## [1.1.13] - 2026-11-18
 
 ### Added

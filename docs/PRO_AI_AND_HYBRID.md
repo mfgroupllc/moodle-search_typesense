@@ -84,7 +84,7 @@ Open **Site administration → Reports → Search synonyms**, or **Search synony
 - An administrator presses **Suggest from the last 7 / 30 / 90 days**. Nothing runs in the background.
 - Typesense Pro sends the text of recent zero-result searches (no user details) and the names of visible courses to Moodle's AI subsystem (**Generate text**). Course codes, ids and internal tokens are left out.
 - Search text and course names are passed as delimited untrusted data so they cannot change the instructions.
-- Suggested terms that match no content on the site are dropped. Suggestions are only accepted for the searches that were sent.
+- Suggested terms that match no content on the site are dropped, except words taken from the failed search itself in an equivalent-terms rule. Suggestions are only accepted for the searches that were sent, and searches that stopped early on the scan or time budget are not sent.
 - Every suggestion waits for approval. Approving, disabling or deleting an active rule syncs the set to Typesense straight away. Rejected suggestions are kept so they are not suggested again.
 - The site AI usage policy must be accepted first. If it has not been, the page shows the policy with **Accept and continue** and **Decline** buttons, and acceptance is recorded by Moodle's AI subsystem only when the administrator presses accept.
 - Rules can always be added by hand without any AI provider.
