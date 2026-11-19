@@ -190,6 +190,7 @@ echo $OUTPUT->header();
 
 $results = null;
 $searchelapsed = 0.0;
+$shortcuts = [];
 if ($data) {
     $searchstart = microtime(true);
     $candidateengine = new candidate_engine(hook_callbacks::is_alternate_engine());
@@ -217,6 +218,11 @@ if ($data) {
         }
     }
     $searchelapsed = microtime(true) - $searchstart;
+    if ($page === 0) {
+        // Extra or missing words only count when the search found nothing, so shortcuts never crowd out results.
+        $shortcuts = \search_typesense\shortcuts::for_query((string)$data->q, !$results->results && !$results->hasmore);
+        $results->shortcuts = count($shortcuts);
+    }
     \search_typesense\pro_bridge::record_search_telemetry($data, $scope, $results, $searchelapsed);
 }
 
@@ -257,6 +263,7 @@ if (count($validscopes) > 1) {
 
 $mform->display();
 echo \search_typesense\pro_bridge::render_search_page_banner($data, $scope, $results, $url);
+echo $searchrenderer->render_shortcuts($shortcuts);
 if ($results) {
     if ($results->limited) {
         echo $OUTPUT->notification(get_string('searchlimited', 'search_typesense'), 'notifyinfo');

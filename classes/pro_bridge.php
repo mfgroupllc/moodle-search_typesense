@@ -168,6 +168,21 @@ class pro_bridge {
     }
 
     /**
+     * Let local_typesensepro note that a search shortcut was opened.
+     *
+     * @param string $query Search text the shortcut was shown for.
+     * @param string $label Shortcut label.
+     * @param string $url Shortcut URL.
+     * @return void
+     */
+    public static function record_shortcut_click(string $query, string $label, string $url): void {
+        $class = self::PRO_CLASS;
+        if (self::is_active() && method_exists($class, 'record_shortcut_click')) {
+            $class::record_shortcut_click($query, $label, $url);
+        }
+    }
+
+    /**
      * Allow local_typesensepro to inject settings directly into the Typesense admin settings page.
      *
      * @param \admin_settingpage $settings Typesense settings page instance.

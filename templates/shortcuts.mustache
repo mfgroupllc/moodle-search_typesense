@@ -1,0 +1,44 @@
+{{!
+    This file is part of Moodle - https://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
+}}
+{{!
+    @template search_typesense/shortcuts
+
+    Site links that match the search, shown above the results.
+
+    Context variables required for this template:
+    * shortcuts - Links, each with label and clickurl.
+
+    Example context (json):
+    {
+        "shortcuts": [
+            {"label": "Student Portal", "clickurl": "https://example.com/search/engine/typesense/go.php?q=portal&link=ab12"},
+            {"label": "Calendar", "clickurl": "https://example.com/search/engine/typesense/go.php?q=calendar&link=cd34"}
+        ]
+    }
+}}
+<nav class="search-typesense-shortcuts card mb-3" aria-labelledby="search-typesense-shortcuts-heading">
+    <div class="card-body py-2">
+        <h2 id="search-typesense-shortcuts-heading" class="h6 mb-2">{{#str}} shortcuts_heading, search_typesense {{/str}}</h2>
+        <ul class="list-inline mb-0">
+            {{#shortcuts}}
+            <li class="list-inline-item mb-1">
+                <a class="btn btn-outline-primary btn-sm" href="{{clickurl}}">{{label}}</a>
+            </li>
+            {{/shortcuts}}
+        </ul>
+    </div>
+</nav>

@@ -108,6 +108,19 @@ class renderer extends \core_search\output\renderer {
     }
 
     /**
+     * Render the site links that match the search.
+     *
+     * @param array[] $shortcuts Items with label and clickurl, from \search_typesense\shortcuts::for_query().
+     * @return string HTML, or '' when there are none.
+     */
+    public function render_shortcuts(array $shortcuts): string {
+        if (!$shortcuts) {
+            return '';
+        }
+        return $this->output->render_from_template('search_typesense/shortcuts', ['shortcuts' => array_values($shortcuts)]);
+    }
+
+    /**
      * Display a single search result with deduplicated context and course links.
      *
      * @param \core_search\document $doc Search document to display.

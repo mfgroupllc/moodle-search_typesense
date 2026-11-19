@@ -233,6 +233,30 @@ if (isset($ADMIN) && $ADMIN->locate('searchplugins')) {
                 \search_typesense\user_profile_fields::get_setting_choices()
             ));
 
+            // Search shortcuts to the site links users already see.
+            $contentsettings->add(new admin_setting_heading(
+                'search_typesense/heading_shortcuts',
+                new lang_string('settings_shortcuts_heading', 'search_typesense'),
+                new lang_string('settings_shortcuts_heading_desc', 'search_typesense')
+            ));
+
+            $contentsettings->add(new admin_setting_configcheckbox(
+                'search_typesense/shortcutsnav',
+                new lang_string('shortcutsnav', 'search_typesense'),
+                new lang_string('shortcutsnav_desc', 'search_typesense'),
+                1
+            ));
+
+            $contentsettings->add(new \search_typesense\admin\setting_shortcuts(
+                'search_typesense/shortcuts',
+                new lang_string('shortcuts', 'search_typesense'),
+                new lang_string('shortcuts_desc', 'search_typesense'),
+                '',
+                PARAM_RAW,
+                '80',
+                '6'
+            ));
+
             // Attached Document & File Content Indexing.
             $contentsettings->add(new admin_setting_heading(
                 'search_typesense/heading_fileindexing',

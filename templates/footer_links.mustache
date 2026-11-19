@@ -1,0 +1,38 @@
+{{!
+    This file is part of Moodle - https://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
+}}
+{{!
+    @template search_typesense/footer_links
+
+    Placeholder for the links found in this page's footer, filled in by search_typesense/footer_links.
+
+    Context variables required for this template:
+    * textareaid - Id of the shortcut list textarea.
+
+    Example context (json):
+    {
+        "textareaid": "id_s_search_typesense_shortcuts"
+    }
+}}
+<div class="search-typesense-footer-links form-item row mb-3" data-region="search-typesense-footer-links" data-for="{{textareaid}}" hidden>
+    <div class="col-md-9 offset-md-3">
+        <h3 class="h6">{{#str}} shortcuts_footer_heading, search_typesense {{/str}}</h3>
+        <p class="text-muted small">{{#str}} shortcuts_footer_desc, search_typesense {{/str}}</p>
+        <ul class="list-unstyled mb-1" data-region="list"></ul>
+        <p class="small mb-0" data-region="empty" hidden>{{#str}} shortcuts_footer_none, search_typesense {{/str}}</p>
+        <p class="visually-hidden sr-only" data-region="status" aria-live="polite"></p>
+    </div>
+</div>
