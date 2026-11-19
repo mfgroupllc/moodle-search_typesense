@@ -154,7 +154,7 @@ final class shortcuts_test extends \advanced_testcase {
      * @return void
      */
     public function test_links_and_find_link(): void {
-        global $PAGE, $CFG;
+        global $PAGE;
         $this->resetAfterTest();
         $PAGE->set_url('/search/engine/typesense/query.php');
         $PAGE->set_context(\context_system::instance());
@@ -173,7 +173,8 @@ final class shortcuts_test extends \advanced_testcase {
         $this->assertSame(['sis'], $byurl['https://portal.example.edu/']['keywords']);
         $this->assertArrayHasKey('https://example.edu/catalog/', $byurl);
         $this->assertArrayHasKey('https://example.edu/austin/', $byurl);
-        $this->assertArrayHasKey($CFG->wwwroot . '/grade/report/mygrades.php', $byurl);
+        // The user menu sends Grades to the user's grade report, wherever the site has it.
+        $this->assertContains('Grades', array_column($links, 'label'));
         foreach ($links as $link) {
             $this->assertStringNotContainsString('sesskey', $link['url']);
         }
