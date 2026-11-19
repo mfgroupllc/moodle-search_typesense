@@ -30,6 +30,12 @@ $definitions = [
         'simplekeys' => true,
         'simpledata' => false,
     ],
+    'shortcutlinks' => [
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => false,
+        'ttl' => 600,
+    ],
     'openaccesscourses' => [
         'mode' => cache_store::MODE_APPLICATION,
         'simplekeys' => true,

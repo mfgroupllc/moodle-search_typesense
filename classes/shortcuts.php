@@ -38,6 +38,8 @@ namespace search_typesense;
 class shortcuts {
     /** @var int Most shortcuts shown for one search. */
     public const MAX_SHOWN = 3;
+    /** @var int Seconds a user's link list is reused for. */
+    private const CACHE_SECONDS = 600;
     /** @var int Shortest word a one-letter typo is allowed in. */
     private const TYPO_MIN_LENGTH = 5;
 
@@ -77,9 +79,42 @@ class shortcuts {
     /**
      * Every link the current user can reach through a shortcut, without duplicates.
      *
+     * The list is cached per user and language for a few minutes, because building Moodle's menus on a request that
+     * has not set up the page theme (such as each InstantSearch keystroke) costs a few hundred milliseconds. The cache
+     * key includes the menu and shortcut settings, so changes to them apply at once.
+     *
      * @return array[] Items with label, url and keywords.
      */
     public static function links(): array {
+        global $CFG, $USER;
+        $settings = [
+            $CFG->custommenuitems ?? '',
+            $CFG->customusermenuitems ?? '',
+            $CFG->supportavailability ?? '',
+            $CFG->supportpage ?? '',
+            $CFG->sitepolicyhandler ?? '',
+            get_config('search_typesense', 'shortcutsnav'),
+            get_config('search_typesense', 'shortcuts'),
+            get_config('search_typesense', 'locale'),
+        ];
+        $key = (int)($USER->id ?? 0) . '_' . preg_replace('/[^a-zA-Z0-9]/', '', current_language()) . '_' .
+            substr(sha1(json_encode($settings)), 0, 16);
+        $cache = \cache::make('search_typesense', 'shortcutlinks');
+        $cached = $cache->get($key);
+        if (is_array($cached) && isset($cached['time'], $cached['links']) && $cached['time'] > time() - self::CACHE_SECONDS) {
+            return $cached['links'];
+        }
+        $links = self::build_links();
+        $cache->set($key, ['time' => time(), 'links' => $links]);
+        return $links;
+    }
+
+    /**
+     * Build the link list for the current user.
+     *
+     * @return array[] Items with label, url and keywords.
+     */
+    protected static function build_links(): array {
         $links = [];
         if (get_config('search_typesense', 'shortcutsnav') !== '0') {
             foreach (['navigation_links', 'user_menu_links', 'footer_links'] as $source) {
@@ -169,7 +204,12 @@ class shortcuts {
         usort($scored, static function ($a, $b) {
             return [$a[0], $a[1]] <=> [$b[0], $b[1]];
         });
-        return array_slice(array_column($scored, 2), 0, self::MAX_SHOWN);
+        // Two menu links with the same name (a site may call both its front page and dashboard "Home") show once.
+        $out = [];
+        foreach (array_column($scored, 2) as $item) {
+            $out[implode(' ', self::words($item['label']))] ??= $item;
+        }
+        return array_slice(array_values($out), 0, self::MAX_SHOWN);
     }
 
     /**
@@ -289,8 +329,9 @@ class shortcuts {
      * @return array[]
      */
     protected static function navigation_links(): array {
-        global $PAGE, $OUTPUT;
-        $menu = (new \core\navigation\output\primary($PAGE))->export_for_template($OUTPUT);
+        global $PAGE;
+        // Moodle picks the page's renderer; $OUTPUT is only a placeholder before the page header is printed.
+        $menu = (new \core\navigation\output\primary($PAGE))->export_for_template();
         $links = [];
         $walk = static function (array $nodes) use (&$walk, &$links) {
             foreach ($nodes as $node) {

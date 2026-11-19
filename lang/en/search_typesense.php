@@ -28,6 +28,7 @@ $string['apikey'] = 'API key';
 $string['apikey_desc'] = 'The Typesense API key (admin or search-only key with write access for indexing).';
 $string['cachedef_accessiblecourses'] = 'Courses the current user can open, used to narrow search candidates';
 $string['cachedef_openaccesscourses'] = 'Courses that can be opened without an enrollment';
+$string['cachedef_shortcutlinks'] = 'Site links each user can reach through a search shortcut';
 $string['candidatefirst'] = 'Search matching courses first';
 $string['candidatefirst_desc'] = 'Use the Typesense search page to find candidates before checking Moodle access for their courses. Applies to browser global search. Disable to use the standard Moodle search page.';
 $string['collection'] = 'Collection name';

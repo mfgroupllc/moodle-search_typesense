@@ -35,6 +35,16 @@ namespace search_typesense;
  */
 final class user_profile_fields_test extends \advanced_testcase {
     /**
+     * Start each test without capability checks cached by earlier tests.
+     *
+     * @return void
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        user_profile_fields::reset_caches();
+    }
+
+    /**
      * Verify configured fields resolve $CFG->showuseridentity and explicit selections.
      *
      * @return void

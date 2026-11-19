@@ -48,6 +48,9 @@ class user_profile_fields {
     /** @var string Special setting token that inherits Moodle's $CFG->showuseridentity fields. */
     public const FOLLOW_SHOWUSERIDENTITY = '__showuseridentity__';
 
+    /** @var bool[] Whether each user holds an identity capability anywhere, keyed by user id, for this request. */
+    private static $identitycache = [];
+
     /** @var string[] Standard user table fields supported for indexing and display. */
     private const STANDARD_FIELDS = [
         'idnumber',
@@ -578,19 +581,27 @@ class user_profile_fields {
     }
 
     /**
+     * Forget cached capability checks, for tests that reuse user ids or change role assignments.
+     *
+     * @return void
+     */
+    public static function reset_caches(): void {
+        self::$identitycache = [];
+    }
+
+    /**
      * Check whether the current viewer holds `moodle/site:viewuseridentity` in any enrolled or assigned context.
      *
      * @return bool
      */
     private static function has_identity_capability_in_any_context(): bool {
         global $USER;
-        static $cached = [];
         $uid = (int)($USER->id ?? 0);
-        if (array_key_exists($uid, $cached)) {
-            return $cached[$uid];
+        if (array_key_exists($uid, self::$identitycache)) {
+            return self::$identitycache[$uid];
         }
         if ($uid <= 0 || isguestuser()) {
-            $cached[$uid] = false;
+            self::$identitycache[$uid] = false;
             return false;
         }
         $courses = enrol_get_users_courses($uid, true);
@@ -602,7 +613,7 @@ class user_profile_fields {
                     has_capability('moodle/user:viewalldetails', $coursecontext) ||
                     has_capability('moodle/user:viewhiddendetails', $coursecontext))
             ) {
-                $cached[$uid] = true;
+                self::$identitycache[$uid] = true;
                 return true;
             }
         }
@@ -618,11 +629,11 @@ class user_profile_fields {
                     has_capability('moodle/user:viewalldetails', $ctx) ||
                     has_capability('moodle/user:viewhiddendetails', $ctx))
             ) {
-                $cached[$uid] = true;
+                self::$identitycache[$uid] = true;
                 return true;
             }
         }
-        $cached[$uid] = false;
+        self::$identitycache[$uid] = false;
         return false;
     }
 }

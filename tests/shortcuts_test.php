@@ -100,6 +100,9 @@ final class shortcuts_test extends \advanced_testcase {
         $this->assertSame([], $this->labels('student', false));
         $this->assertSame(['Student Portal'], $this->labels('student', true));
         $this->assertSame(['Technique Videos', 'How To Videos'], $this->labels('videos', true));
+        // Links that share a name show once.
+        $links = array_merge($this->sample_links(), [['label' => 'home', 'url' => 'https://example.com/my/']]);
+        $this->assertSame(['https://example.com/'], array_column(shortcuts::match('home', $links, false), 'url'));
         // Too many extra words, or a short fragment of a label, do not match.
         $this->assertSame([], $this->labels('sautéing week 1 calendar', true));
         $this->assertSame([], $this->labels('how', true));
