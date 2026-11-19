@@ -349,8 +349,7 @@ class candidate_engine extends engine {
         if (!isset($filters->candidatecourseids) || !is_array($filters->candidatecourseids)) {
             return '';
         }
-        $ids = access_manager::normalise_ids($filters->candidatecourseids);
-        return 'courseid:[' . ($ids ? implode(',', $ids) : '-1') . ']';
+        return access_manager::courseid_filter($filters->candidatecourseids);
     }
 
     /**
@@ -374,7 +373,7 @@ class candidate_engine extends engine {
         if ($scope !== null && $accessible !== null) {
             $ids = array_values(array_intersect($ids, $accessible));
         }
-        return 'courseid:[' . ($ids ? implode(',', $ids) : '-1') . ']';
+        return access_manager::courseid_filter($ids);
     }
 
     /**
@@ -601,7 +600,7 @@ class candidate_engine extends engine {
             if ($coursescope === []) {
                 return [];
             }
-            $clauses[] = 'courseid:[' . implode(',', $coursescope) . ']';
+            $clauses[] = access_manager::courseid_filter($coursescope);
         }
         if (!empty($filters->timestart)) {
             $clauses[] = 'modified:>=' . (int)$filters->timestart;

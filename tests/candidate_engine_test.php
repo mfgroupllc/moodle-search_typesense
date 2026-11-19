@@ -65,6 +65,35 @@ final class candidate_engine_test extends \advanced_testcase {
     }
 
     /**
+     * A list holding most of the site's courses is sent as the courses left out, which Typesense applies far faster.
+     *
+     * @return void
+     */
+    public function test_courseid_filter(): void {
+        $this->resetAfterTest();
+        access_manager::reset_caches();
+        $generator = $this->getDataGenerator();
+        $ids = [];
+        for ($i = 0; $i < 5; $i++) {
+            $ids[] = (int)$generator->create_course()->id;
+        }
+        $site = (int)SITEID;
+        // Short lists, and lists no longer than the courses they leave out, stay lists.
+        $this->assertSame('courseid:[' . implode(',', $ids) . ']', access_manager::courseid_filter($ids));
+        $this->assertSame('courseid:[' . $ids[0] . ',' . $ids[1] . ']', access_manager::courseid_filter([$ids[1], $ids[0]], 1));
+        $this->assertSame('courseid:[-1]', access_manager::courseid_filter([]));
+        // Every course but two: the two are named instead.
+        $this->assertSame(
+            'courseid:!=[' . $site . ',' . $ids[0] . ']',
+            access_manager::courseid_filter(array_slice($ids, 1), 1)
+        );
+        // Every course on the site.
+        $this->assertSame('courseid:!=[0]', access_manager::courseid_filter(array_merge([$site], $ids), 1));
+        // The site course split only applies to lists.
+        $this->assertSame([], $this->call('split_site_course', [['filter_by' => 'courseid:!=[' . $site . ',' . $ids[0] . ']']]));
+    }
+
+    /**
      * A course list mixing the site course with other courses is split into two searches without paging.
      *
      * @return void

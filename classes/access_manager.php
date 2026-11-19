@@ -45,6 +45,12 @@ class access_manager extends \core_search\manager {
     /** @var int Above this many accessible courses, narrowing the backend query is not worthwhile. */
     private const MAX_NARROWED_COURSES = 1000;
 
+    /** @var int Course lists up to this size are always sent as a list; longer ones may be sent as the courses left out. */
+    private const COMPLEMENT_MIN = 500;
+
+    /** @var int[]|null Every course id on the site, for this request. */
+    private static $allcourseids = null;
+
     /** @var array Context maps already computed, grouped by the original search scope. */
     private $contextcache = [];
 
@@ -141,6 +147,50 @@ class access_manager extends \core_search\manager {
         })));
         sort($ids, SORT_NUMERIC);
         return $ids;
+    }
+
+    /**
+     * Typesense filter clause matching documents in the given courses.
+     *
+     * Typesense takes seconds to apply a filter listing thousands of ids, so when most courses are in the list (the
+     * Historical scope on a site with many past courses) the clause names the courses that are not in it instead.
+     * Both forms match the same documents.
+     *
+     * @param int[] $ids Course ids.
+     * @param int $listmax Lists up to this size are always sent as a list.
+     * @return string Clause, for example `courseid:[2,3]` or `courseid:!=[1,4]`.
+     */
+    public static function courseid_filter(array $ids, int $listmax = self::COMPLEMENT_MIN): string {
+        $ids = self::normalise_ids($ids);
+        if (count($ids) > $listmax) {
+            $others = array_values(array_diff(self::all_courseids(), $ids));
+            if (count($others) < count($ids)) {
+                return 'courseid:!=[' . ($others ? implode(',', $others) : '0') . ']';
+            }
+        }
+        return 'courseid:[' . ($ids ? implode(',', $ids) : '-1') . ']';
+    }
+
+    /**
+     * Ids of every course on the site, including the site course, for this request.
+     *
+     * @return int[]
+     */
+    protected static function all_courseids(): array {
+        global $DB;
+        if (self::$allcourseids === null) {
+            self::$allcourseids = self::normalise_ids($DB->get_fieldset_select('course', 'id', '1 = 1'));
+        }
+        return self::$allcourseids;
+    }
+
+    /**
+     * Forget the per-request course list, for tests that add courses.
+     *
+     * @return void
+     */
+    public static function reset_caches(): void {
+        self::$allcourseids = null;
     }
 
     /**

@@ -35,6 +35,8 @@ $page = max(0, optional_param('page', 0, PARAM_INT));
 $q = optional_param('q', '', PARAM_NOTAGS);
 $contextid = optional_param('context', 0, PARAM_INT);
 $scope = optional_param('scope', course_scope::default_scope(), PARAM_ALPHA);
+// Set by the "search only this scope" link after an automatic switch to Search everything.
+$scopeonly = optional_param('scopeonly', 0, PARAM_BOOL);
 $validscopes = course_scope::valid_scopes();
 if (!in_array($scope, $validscopes, true)) {
     $scope = course_scope::default_scope();
@@ -135,6 +137,10 @@ if (!$data && $q !== '' && !$mform->is_submitted()) {
 }
 
 $urlparams = ['scope' => $scope, 'page' => $page, 'context' => $contextid];
+if ($scopeonly) {
+    $urlparams['scopeonly'] = 1;
+}
+$userareaids = [];
 $emptyareas = false;
 if ($data) {
     if ($coursecontext && !empty($data->searchwithin)) {
@@ -156,6 +162,7 @@ if ($data) {
             $urlparams[$name] = implode(',', $data->{$name});
         }
     }
+    $userareaids = !empty($data->areaids) ? (array)$data->areaids : [];
     if ($scope === 'videotime') {
         $videotimeareas = course_scope::videotime_areaids();
         $data->areaids = empty($data->areaids)
@@ -191,6 +198,7 @@ echo $OUTPUT->header();
 $results = null;
 $searchelapsed = 0.0;
 $shortcuts = [];
+$switchedfrom = '';
 if ($data) {
     $searchstart = microtime(true);
     $candidateengine = new candidate_engine(hook_callbacks::is_alternate_engine());
@@ -214,6 +222,34 @@ if ($data) {
                 $cat = $allcat;
                 $data = $fallbackdata;
                 $url->param('cat', $allcat->get_name());
+            }
+        }
+    }
+    if (
+        empty($results->results) && !$results->hasmore && empty($results->limited) && $page === 0 && $scope !== 'all' &&
+            !$scopeonly && in_array('all', $validscopes, true)
+    ) {
+        // Nothing in the chosen scope, so look in Search everything, as the Typesense Pro dropdown does. A search that
+        // ran out of time is left alone, since a second search would only make the page slower.
+        $everywhereareas = $userareaids;
+        if ($cat) {
+            $categoryareas = \search_typesense\user_profile_fields::filter_allowed_areas(array_keys($cat->get_areas()));
+            $everywhereareas = $everywhereareas ? array_values(array_intersect($everywhereareas, $categoryareas)) : $categoryareas;
+        } else if ($everywhereareas) {
+            $everywhereareas = \search_typesense\user_profile_fields::filter_allowed_areas($everywhereareas);
+        }
+        if (!$userareaids || $everywhereareas) {
+            $everywheredata = clone $data;
+            $everywheredata->areaids = $everywhereareas;
+            $everywheredata->scope = 'all';
+            $everywheredata->scopecourseids = course_scope::courseids('all');
+            $everywhereresults = $candidateengine->search_page($everywheredata, 0);
+            if (!empty($everywhereresults->results)) {
+                $switchedfrom = $scope;
+                $scope = 'all';
+                $data = $everywheredata;
+                $results = $everywhereresults;
+                $url->param('scope', 'all');
             }
         }
     }
@@ -264,6 +300,18 @@ if (count($validscopes) > 1) {
 $mform->display();
 echo \search_typesense\pro_bridge::render_search_page_banner($data, $scope, $results, $url);
 echo $searchrenderer->render_shortcuts($shortcuts);
+if ($switchedfrom !== '') {
+    $fromlabel = course_scope::scope_label($switchedfrom);
+    $scopeonlylink = html_writer::link(
+        new moodle_url($url, ['scope' => $switchedfrom, 'scopeonly' => 1, 'page' => 0]),
+        get_string('scopeswitched_only', 'search_typesense', $fromlabel)
+    );
+    $switchednote = get_string('scopeswitched', 'search_typesense', (object)[
+        'from' => $fromlabel,
+        'to' => course_scope::scope_label('all'),
+    ]);
+    echo $OUTPUT->notification($switchednote . ' ' . $scopeonlylink, 'notifyinfo');
+}
 if ($results) {
     if ($results->limited) {
         echo $OUTPUT->notification(get_string('searchlimited', 'search_typesense'), 'notifyinfo');
