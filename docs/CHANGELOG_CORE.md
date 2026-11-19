@@ -4,6 +4,24 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.18] - 2026-11-19
+
+### Added
+- **Search Shortcuts (`\search_typesense\shortcuts`, `go.php`, `templates/shortcuts.mustache`):**
+  - When a search matches the name of a link people already see on the site, the search page shows that link in a **Go to** card above the results. For example, `student portal` finds the **Student Portal** custom menu item and `calendar view` finds **Calendar** in the user menu.
+  - Links come from the menus Moodle builds for the current user: the main menu with its custom menu items, the user menu, and the **Contact site support** and policy links in the footer. Only links the user can already see are offered, in the user's language.
+  - The new **Shortcut list** setting adds links that are not in those menus, such as theme footer links, one per line as `label | URL | extra keywords`. Keywords let a link answer to other words people search for. Labels can use the multi-language filter.
+  - On the settings page, **Links in your site footer** lists the links in the footer as the theme renders it, each with an **Add** button, so they can be copied into the list without retyping. This script runs only on that settings page.
+  - Matching ignores case, and ignores accents unless the index keeps them for a language (the **Locale** setting). Words of five or more letters may differ by one letter. A search must name the whole link; extra or missing words only match when the search found no content, so shortcuts never crowd out results.
+  - Shortcuts open through `go.php`, which only follows links in the user's own shortcut list and lets Typesense Pro record that the shortcut was opened.
+  - Each user's link list is cached for ten minutes (`shortcutlinks` cache); changes to the menus or shortcut settings apply at once.
+  - New settings under **Content, Users & Integrations → Search shortcuts**: **Include site menu links** (on by default) and **Shortcut list**.
+
+### Fixed
+- The user identity capability check (`\search_typesense\user_profile_fields`) kept its per-user results in a function-level cache that tests could not clear; it can now be reset with `user_profile_fields::reset_caches()`.
+
+---
+
 ## [1.1.17] - 2026-11-18
 
 ### Changed

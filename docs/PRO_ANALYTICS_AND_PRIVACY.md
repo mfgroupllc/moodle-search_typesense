@@ -15,6 +15,7 @@ Use the **Search results page / InstantSearch dropdown / All searches** switch t
 - **Total Searches:** Total number of searches performed during the selected period.
 - **Average & p95 Latency (`ms`):** Average and 95th-percentile search response time in milliseconds.
 - **Zero-Result Rate (`%`):** Percentage of searches that returned 0 authorized results.
+- **Shortcuts Opened:** Number of searches where the user opened a **Go to** shortcut to a site link. Shortcuts are not counted as results, and searches that showed a shortcut are left out of synonym suggestions.
 - **Historical Spillover Queries:** Number of searches performed in **Current courses** that matched past courses in **Historical / other courses**.
 
 ### Actionable Reports

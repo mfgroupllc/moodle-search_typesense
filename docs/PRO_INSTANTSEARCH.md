@@ -12,6 +12,7 @@ As soon as a user clicks the search icon in Moodle's top navbar and begins typin
 - **No Public Port Required:** Browsers communicate only with your Moodle web server over standard HTTPS; your Typesense server remains safely inside your private network.
 - **Rich Result Cards:** Shows highlighted matching terms, activity type badges (*Course*, *Book - chapters*, *Video Time*, *Users*, etc.), parent course names, and—for authorized staff—user profile badges (*ID number*, *Email address*, *Phone*).
 - **Full Keyboard Navigation:** Use `↑` and `↓` arrow keys to move through results, `Enter` to open the selected item, or `Esc` to close the dropdown.
+- **Go to Shortcuts:** With Typesense Search 1.1.18 or later, links people already see on the site that match the search (such as a **Student Portal** menu item or **Calendar**) appear as **Go to** rows at the top of the dropdown. See **Search Shortcuts** in the Typesense Search administrator guide.
 
 ---
 

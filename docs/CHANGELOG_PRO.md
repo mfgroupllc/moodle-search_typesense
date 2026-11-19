@@ -4,6 +4,19 @@ All notable updates to **Typesense Pro (`local_typesensepro`)** for Moodle are d
 
 ---
 
+## [1.1.15] - 2026-11-19
+
+### Added
+- **Search Shortcuts in InstantSearch (`\local_typesensepro\external\instant_search`):**
+  - With Typesense Search 1.1.18 or later, site links that match the search (such as the **Student Portal** menu item or **Calendar**) appear as **Go to** rows at the top of the dropdown, and work with the arrow keys and Enter like other rows. Older Typesense Search versions show no shortcuts.
+- **Shortcut Analytics (`\local_typesensepro\analytics_logger`):**
+  - The search log records how many shortcuts each search showed (`shortcuts`) and whether the user opened one (`shortcutclicked`). The **Search analytics** dashboard shows the number of **Shortcuts opened**.
+  - Dropdown searches count only content results as results, so shortcuts do not hide zero-result searches.
+  - Searches that showed a shortcut are left out of synonym suggestions, since they were looking for a page rather than content.
+  - The privacy provider declares and exports the new fields.
+
+---
+
 ## [1.1.14] - 2026-11-18
 
 ### Fixed

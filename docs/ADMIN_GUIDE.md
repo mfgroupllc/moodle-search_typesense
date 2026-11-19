@@ -77,6 +77,19 @@ When the **Video Time (`mod_videotime`)** activity plugin is installed on your M
 | **Video Time button label** | `Video Time` | Customizes the button label (for example, `Video Library` or `Lecture Videos`). |
 - **Show matching Video Time activities near the top:** When enabled (the default), Video Time activities whose title matches the search appear after matching courses and before other content on the first page of results and in the Typesense Pro dropdown.
 
+### Search Shortcuts
+
+People often search for a page they can already reach from a menu, such as a student portal, the calendar or their grades. When a search names one of those links, the search page shows it in a **Go to** card above the results (and Typesense Pro shows it at the top of the InstantSearch dropdown).
+
+| Setting | Default | Description |
+| :--- | :--- | :--- |
+| **Include site menu links** | Enabled | Matches searches against the links each user sees in the main menu (including custom menu items), the user menu, and the **Contact site support** and policy links in the footer. Only links the user can already see are offered. |
+| **Shortcut list** | Empty | Extra shortcuts, one per line: `label \| URL \| extra keywords`, for example `Student Portal \| https://portal.example.edu/ \| sis, registration`. Use it for links that are not in the site menus, such as theme footer links, and for other words people use for a link. Labels can use the multi-language filter. |
+
+- **Footer links:** Themes keep their footer in their own settings, so footer links are not picked up automatically. Below the shortcut list, **Links in your site footer** shows the links in the footer of the settings page as your theme renders it, each with an **Add** button. Add the ones people should find by searching, then save changes.
+- **Matching:** Case is ignored, and accents are ignored unless the index keeps them for a language (the **Locale** setting). Words of five or more letters may differ by one letter, so `calender` finds **Calendar**. A search must name the whole link; a search with extra or missing words (`calendar view`) only shows a shortcut when it found no content.
+- **Opening a shortcut:** Shortcut links go through `/search/engine/typesense/go.php`, which only opens links in the user's own shortcut list. With Typesense Pro, opening a shortcut is counted on the **Search analytics** dashboard.
+
 ---
 
 ## 3. Server Health
