@@ -82,15 +82,23 @@ final class candidate_engine_test extends \advanced_testcase {
         $this->assertSame('courseid:[' . implode(',', $ids) . ']', access_manager::courseid_filter($ids));
         $this->assertSame('courseid:[' . $ids[0] . ',' . $ids[1] . ']', access_manager::courseid_filter([$ids[1], $ids[0]], 1));
         $this->assertSame('courseid:[-1]', access_manager::courseid_filter([]));
-        // Every course but two: the two are named instead.
+        // Every course but two: the two are named instead, with the site course in a condition of its own.
         $this->assertSame(
-            'courseid:!=[' . $site . ',' . $ids[0] . ']',
+            'courseid:!=[' . $ids[0] . '] && courseid:!=' . $site,
             access_manager::courseid_filter(array_slice($ids, 1), 1)
         );
+        // The site course is in the list, so only the other course is left out.
+        $this->assertSame(
+            'courseid:!=[' . $ids[0] . ']',
+            access_manager::courseid_filter(array_merge([$site], array_slice($ids, 1)), 1)
+        );
+        // Only the site course is left out.
+        $this->assertSame('courseid:!=' . $site, access_manager::courseid_filter($ids, 1));
         // Every course on the site.
         $this->assertSame('courseid:!=[0]', access_manager::courseid_filter(array_merge([$site], $ids), 1));
         // The site course split only applies to lists.
-        $this->assertSame([], $this->call('split_site_course', [['filter_by' => 'courseid:!=[' . $site . ',' . $ids[0] . ']']]));
+        $excluded = 'courseid:!=[' . $ids[0] . '] && courseid:!=' . $site;
+        $this->assertSame([], $this->call('split_site_course', [['filter_by' => $excluded]]));
     }
 
     /**

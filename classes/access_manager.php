@@ -154,18 +154,27 @@ class access_manager extends \core_search\manager {
      *
      * Typesense takes seconds to apply a filter listing thousands of ids, so when most courses are in the list (the
      * Historical scope on a site with many past courses) the clause names the courses that are not in it instead.
-     * Both forms match the same documents.
+     * Both forms match the same documents. The site course, which holds every user profile and message, is left out
+     * in a condition of its own: inside the list it made each search about five times slower.
      *
      * @param int[] $ids Course ids.
      * @param int $listmax Lists up to this size are always sent as a list.
-     * @return string Clause, for example `courseid:[2,3]` or `courseid:!=[1,4]`.
+     * @return string Clause, for example `courseid:[2,3]` or `courseid:!=[4,5] && courseid:!=1`.
      */
     public static function courseid_filter(array $ids, int $listmax = self::COMPLEMENT_MIN): string {
         $ids = self::normalise_ids($ids);
         if (count($ids) > $listmax) {
             $others = array_values(array_diff(self::all_courseids(), $ids));
             if (count($others) < count($ids)) {
-                return 'courseid:!=[' . ($others ? implode(',', $others) : '0') . ']';
+                $clauses = [];
+                $courses = array_values(array_diff($others, [(int)SITEID]));
+                if ($courses) {
+                    $clauses[] = 'courseid:!=[' . implode(',', $courses) . ']';
+                }
+                if (count($courses) < count($others)) {
+                    $clauses[] = 'courseid:!=' . (int)SITEID;
+                }
+                return $clauses ? implode(' && ', $clauses) : 'courseid:!=[0]';
             }
         }
         return 'courseid:[' . ($ids ? implode(',', $ids) : '-1') . ']';

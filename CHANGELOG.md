@@ -4,6 +4,13 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Historical Scope Speed (`\search_typesense\access_manager::courseid_filter()`):** When the courses left out of a search include the site course (which holds every user profile and message), it is now excluded in a condition of its own (`courseid:!=[...] && courseid:!=1`). Inside the list it made each Typesense request about 1.4 seconds instead of 0.3 seconds on a production site, so **Historical / other courses** searches still took 4–10 seconds after 1.1.19. Matches are unchanged.
+
+---
+
 ## [1.1.19] - 2026-11-19
 
 ### Fixed
