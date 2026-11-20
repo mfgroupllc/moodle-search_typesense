@@ -38,7 +38,7 @@ export default defineConfig({
       {
         text: 'Release Notes',
         items: [
-          { text: 'Typesense Search (v1.1.18)', link: '/CHANGELOG_CORE.html' },
+          { text: 'Typesense Search (v1.1.19)', link: '/CHANGELOG_CORE.html' },
           { text: 'Typesense Pro (v1.1.15)', link: '/CHANGELOG_PRO.html' },
         ],
       },

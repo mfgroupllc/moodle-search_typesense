@@ -4,6 +4,22 @@ All notable updates to the **Typesense Global Search Engine (`search_typesense`)
 
 ---
 
+## [1.1.19] - 2026-11-19
+
+### Fixed
+- **Historical Scope Timeouts (`\search_typesense\access_manager::courseid_filter()`, `\search_typesense\candidate_engine`):**
+  - Typesense takes seconds to apply a filter that lists thousands of course ids. For staff, **Historical / other courses** listed every course outside **Current courses** (13,416 courses on a production site), so each search took 16–19 seconds in Typesense alone, usually stopped at the time budget and showed no results.
+  - A course list holding most of the site's courses is now sent as the courses it leaves out (`courseid:!=[...]`), which matches the same documents. On that site the same searches went from 16–19 seconds to about 0.1 seconds in Typesense, with identical matches.
+  - Applies to the main search, the matching courses shown first, and Typesense Pro's InstantSearch dropdown.
+
+### Added
+- **Search Everything Fallback (`query.php`):**
+  - When the first page of a **Current courses**, **Historical / other courses** or **Video Time** search finds nothing, the search page also searches **Search everything** and, if that finds results, shows them with a notice such as *"No results in Video Time, so these results are from Search everything."* and a **Search only Video Time** link that repeats the search in the chosen scope without switching. This matches the Typesense Pro dropdown, which already switches.
+  - Typical cases are staff looking up a student ID number or a person while **Video Time** or **Historical** is selected; user profiles are only found in **Search everything**.
+  - Searches that stopped at the time budget are not repeated, so the page does not get slower. With Typesense Pro, the search is logged under the scope the results came from.
+
+---
+
 ## [1.1.18] - 2026-11-19
 
 ### Added
